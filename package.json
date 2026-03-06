@@ -1,0 +1,13 @@
+{
+    "name": "rosa-bot-rocha-saude",
+    "version": "1.0.0",
+    "description": "Bot Rosa - Atendente Virtual Grupo Rocha Saude",
+    "main": "src/server.js",
+    "scripts": {
+          "start": "node src/server.js"
+    },
+    "dependencies": {
+          "@anthropic-ai/sdk": "^0.39.0",
+          "express": "^4.21.0"
+    }
+}
