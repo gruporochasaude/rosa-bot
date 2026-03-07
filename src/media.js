@@ -1,10 +1,11 @@
 /**
  * Media Management for Rosa 2.0
  * Handles sending images and videos via Evolution API
+ * Updated for Wbuy API integration (async product lookups)
  */
 
 const axios = require('axios');
-const { getProductDetails } = require('./products');
+const { getProductDetails, formatProduct, getProductPhotoUrl } = require('./products');
 
 const EVOLUTION_API_URL = process.env.EVOLUTION_API_URL || 'https://evolution-api-production-f708.up.railway.app';
 const EVOLUTION_API_KEY = process.env.EVOLUTION_API_KEY || 'rocha-saude-2024';
@@ -12,10 +13,13 @@ const INSTANCE_NAME = process.env.INSTANCE_NAME || 'rocha-saude';
 
 /**
  * Send product image via WhatsApp
+ * @param {string} phoneNumber
+ * @param {string} productId
+ * @param {string} imageUrl - Optional direct image URL (from Wbuy API)
  */
-async function sendProductImage(phoneNumber, productId) {
+async function sendProductImage(phoneNumber, productId, imageUrl = null) {
   try {
-    const product = getProductDetails(productId);
+    const product = await getProductDetails(productId);
     if (!product) {
       console.error(`[Media] Produto nÃ£o encontrado: ${productId}`);
       return {
@@ -24,7 +28,26 @@ async function sendProductImage(phoneNumber, productId) {
       };
     }
 
-    const caption = `ð¦ ${product.name}\nð¬ ${product.description}\nð° R$ ${product.price.toFixed(2)}\nâ¨ ${product.benefits.join(', ')}`;
+    // Use provided URL, product image, or fetch from API
+    let mediaUrl = imageUrl || product.imageUrl;
+    if (!mediaUrl) {
+      mediaUrl = await getProductPhotoUrl(productId);
+    }
+
+    if (!mediaUrl) {
+      console.warn(`[Media] Sem imagem para produto ${productId}`);
+      return {
+        success: false,
+        error: 'Produto sem imagem disponÃ­vel'
+      };
+    }
+
+    const desc = (product.description || '').replace(/<[^>]*>/g, '').substring(0, 200);
+    let caption = `ð¦ *${product.name}*\nð° R$ ${product.price.toFixed(2)}`;
+    if (desc) caption += `\nð¬ ${desc}`;
+    if (product.benefits && product.benefits.length > 0) {
+      caption += `\nâ¨ ${product.benefits.join(', ')}`;
+    }
 
     const response = await axios.post(
       `${EVOLUTION_API_URL}/message/sendMedia/${INSTANCE_NAME}`,
@@ -33,14 +56,14 @@ async function sendProductImage(phoneNumber, productId) {
         mediatype: 'image',
         mimetype: 'image/jpeg',
         caption: caption,
-        media: product.imageUrl
+        media: mediaUrl
       },
       {
         headers: {
           'apikey': EVOLUTION_API_KEY,
           'Content-Type': 'application/json'
         },
-        timeout: 10000
+        timeout: 15000
       }
     );
 
@@ -64,13 +87,9 @@ async function sendProductImage(phoneNumber, productId) {
  */
 async function sendProductVideo(phoneNumber, productId, videoUrl) {
   try {
-    const product = getProductDetails(productId);
+    const product = await getProductDetails(productId);
     if (!product) {
-      console.error(`[Media] Produto nÃ£o encontrado: ${productId}`);
-      return {
-        success: false,
-        error: 'Produto nÃ£o encontrado'
-      };
+      return { success: false, error: 'Produto nÃ£o encontrado' };
     }
 
     const caption = `VÃ­deo - ${product.name}`;
@@ -89,22 +108,15 @@ async function sendProductVideo(phoneNumber, productId, videoUrl) {
           'apikey': EVOLUTION_API_KEY,
           'Content-Type': 'application/json'
         },
-        timeout: 10000
+        timeout: 15000
       }
     );
 
     console.log(`[Media] VÃ­deo do produto ${productId} enviado para ${phoneNumber}`);
-
-    return {
-      success: true,
-      data: response.data
-    };
+    return { success: true, data: response.data };
   } catch (error) {
     console.error(`[Media] Erro ao enviar vÃ­deo:`, error.message);
-    return {
-      success: false,
-      error: error.message
-    };
+    return { success: false, error: error.message };
   }
 }
 
@@ -113,14 +125,11 @@ async function sendProductVideo(phoneNumber, productId, videoUrl) {
  */
 async function sendProductCarousel(phoneNumber, productIds) {
   try {
-    // Send images sequentially (WhatsApp doesn't support true carousel)
     const results = [];
 
     for (const productId of productIds) {
       const result = await sendProductImage(phoneNumber, productId);
       results.push(result);
-
-      // Small delay between messages
       await new Promise(resolve => setTimeout(resolve, 500));
     }
 
@@ -131,10 +140,7 @@ async function sendProductCarousel(phoneNumber, productIds) {
     };
   } catch (error) {
     console.error(`[Media] Erro ao enviar carrossel:`, error.message);
-    return {
-      success: false,
-      error: error.message
-    };
+    return { success: false, error: error.message };
   }
 }
 
@@ -162,17 +168,10 @@ async function sendImage(phoneNumber, imageUrl, caption = '') {
     );
 
     console.log(`[Media] Imagem enviada para ${phoneNumber}`);
-
-    return {
-      success: true,
-      data: response.data
-    };
+    return { success: true, data: response.data };
   } catch (error) {
     console.error(`[Media] Erro ao enviar imagem genÃ©rica:`, error.message);
-    return {
-      success: false,
-      error: error.message
-    };
+    return { success: false, error: error.message };
   }
 }
 
@@ -200,17 +199,10 @@ async function sendDocument(phoneNumber, documentUrl, filename = 'documento.pdf'
     );
 
     console.log(`[Media] Documento enviado para ${phoneNumber}`);
-
-    return {
-      success: true,
-      data: response.data
-    };
+    return { success: true, data: response.data };
   } catch (error) {
     console.error(`[Media] Erro ao enviar documento:`, error.message);
-    return {
-      success: false,
-      error: error.message
-    };
+    return { success: false, error: error.message };
   }
 }
 
@@ -219,21 +211,14 @@ async function sendDocument(phoneNumber, documentUrl, filename = 'documento.pdf'
  */
 async function validateMediaUrl(mediaUrl) {
   try {
-    const response = await axios.head(mediaUrl, {
-      timeout: 5000
-    });
-
+    const response = await axios.head(mediaUrl, { timeout: 5000 });
     return {
       valid: response.status === 200,
       status: response.status,
       contentType: response.headers['content-type']
     };
   } catch (error) {
-    console.error(`[Media] Erro ao validar URL:`, error.message);
-    return {
-      valid: false,
-      error: error.message
-    };
+    return { valid: false, error: error.message };
   }
 }
 
