@@ -5,6 +5,7 @@
  */
 
 const wbuy = require('./wbuy-api');
+const { extractData } = require('./wbuy-api');
 
 // Local product cache for fast responses
 let productCache = [];
@@ -22,25 +23,20 @@ async function initializeProducts() {
     console.log('[Products] Initializing product catalog from Wbuy API...');
 
     const result = await wbuy.getProducts(1, 100);
-    let products = [];
+    let products = extractData(result);
 
-    if (Array.isArray(result)) {
-      products = result;
-    } else if (result && result.data) {
-      products = result.data;
-
-      // Fetch additional pages if needed
-      if (result.total && result.total > 100) {
-        const totalPages = Math.ceil(result.total / 100);
-        for (let p = 2; p <= totalPages && p <= 10; p++) {
-          try {
-            const nextPage = await wbuy.getProducts(p, 100);
-            const items = Array.isArray(nextPage) ? nextPage : (nextPage.data || []);
-            products = products.concat(items);
-          } catch (err) {
-            console.error(`[Products] Error fetching page ${p}:`, err.message);
-            break;
-          }
+    // Fetch additional pages if we got a full page
+    if (products.length >= 100) {
+      for (let p = 2; p <= 10; p++) {
+        try {
+          const nextPage = await wbuy.getProducts(p, 100);
+          const items = extractData(nextPage);
+          if (items.length === 0) break;
+          products = products.concat(items);
+          if (items.length < 100) break;
+        } catch (err) {
+          console.error(`[Products] Error fetching page ${p}:`, err.message);
+          break;
         }
       }
     }
@@ -52,8 +48,8 @@ async function initializeProducts() {
 
     // Load categories
     try {
-      const cats = await wbuy.getCategories();
-      categoriesCache = Array.isArray(cats) ? cats : (cats?.data || []);
+      const catsResp = await wbuy.getCategories();
+      categoriesCache = extractData(catsResp);
       console.log(`[Products] Loaded ${categoriesCache.length} categories`);
     } catch (err) {
       console.error('[Products] Error loading categories:', err.message);
@@ -80,21 +76,21 @@ async function initializeProducts() {
 function normalizeProduct(raw) {
   return {
     id: String(raw.id || raw.product_id || ''),
-    name: raw.name || raw.nome || 'Produto sem nome',
+    name: raw.nome || raw.name || 'Produto sem nome',
     sku: raw.sku || '',
-    category: raw.category || raw.categoria || raw.category_name || '',
-    categoryId: raw.category_id || raw.categoria_id || '',
-    description: raw.description || raw.descricao || raw.short_description || raw.descricao_curta || '',
-    price: parseFloat(raw.price || raw.preco || raw.valor || raw.price_sale || 0),
-    priceOriginal: parseFloat(raw.price_original || raw.preco_original || raw.price_compare || 0),
-    imageUrl: raw.image || raw.imagem || raw.photo || raw.foto || raw.thumbnail || '',
+    category: raw.categoria_nome || raw.categoria || raw.category || raw.category_name || '',
+    categoryId: String(raw.categoria_id || raw.category_id || ''),
+    description: raw.descricao || raw.descricao_curta || raw.description || raw.short_description || '',
+    price: parseFloat(raw.preco_venda || raw.preco || raw.price || raw.valor || 0),
+    priceOriginal: parseFloat(raw.preco || raw.preco_original || raw.price_original || 0),
+    imageUrl: raw.foto || raw.imagem || raw.image || raw.photo || raw.thumbnail || '',
     slug: raw.slug || raw.url || '',
-    active: raw.active !== false && raw.ativo !== false && raw.status !== 'inactive',
-    stock: raw.stock || raw.estoque || raw.quantity || null,
-    weight: raw.weight || raw.peso || 0,
-    brand: raw.brand || raw.marca || '',
+    active: raw.ativo !== '0' && raw.ativo !== 0 && raw.ativo !== false,
+    stock: raw.estoque !== undefined ? parseInt(raw.estoque) : (raw.stock || null),
+    weight: parseFloat(raw.peso || raw.weight || 0),
+    brand: raw.marca || raw.brand || '',
     benefits: raw.benefits || [],
-    popularity: raw.popularity || raw.views || 0
+    popularity: parseInt(raw.visualizacoes || raw.views || raw.popularity || 0)
   };
 }
 
@@ -168,8 +164,9 @@ async function getProductDetails(productId) {
     // Try fetching from API directly
     try {
       const raw = await wbuy.getProduct(productId);
-      if (raw) {
-        product = normalizeProduct(raw);
+      const items = extractData(raw);
+      if (items.length > 0) {
+        product = normalizeProduct(items[0]);
       }
     } catch (error) {
       console.error(`[Products] Error fetching product ${productId}:`, error.message);
@@ -187,8 +184,8 @@ async function getCategories() {
 
   if (categoriesCache.length > 0) {
     return categoriesCache.map(c => ({
-      id: c.id || c.category_id,
-      name: c.name || c.nome || c.category_name
+      id: c.id || c.categoria_id || c.category_id,
+      name: c.nome || c.name || c.categoria_nome || c.category_name
     }));
   }
 
@@ -227,11 +224,18 @@ async function getTopProducts(limit = 5) {
  */
 async function checkStock(productId) {
   try {
-    const stock = await wbuy.getProductStock(productId);
+    const stockResp = await wbuy.getProductStock(productId);
+    const stockItems = extractData(stockResp);
+    if (stockItems.length > 0) {
+      const qty = parseInt(stockItems[0].quantidade || stockItems[0].estoque || stockItems[0].quantity || 0);
+      return { productId, inStock: qty > 0, quantity: qty };
+    }
+    // Fallback to local cache
+    const product = productCache.find(p => p.id === productId);
     return {
       productId,
-      inStock: stock ? (stock.quantity || stock.quantidade || stock.estoque || 0) > 0 : false,
-      quantity: stock ? (stock.quantity || stock.quantidade || stock.estoque || 0) : 0
+      inStock: product ? product.stock > 0 : false,
+      quantity: product ? product.stock : 0
     };
   } catch (error) {
     // Try local cache
