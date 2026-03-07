@@ -1,6 +1,7 @@
 /**
  * Function Definitions for DeepSeek Function Calling
- * These tools are available for the AI to call during conversation
+ * Tools available for Rosa AI during conversation
+ * Updated for Wbuy API integration
  */
 
 const TOOLS = [
@@ -8,18 +9,17 @@ const TOOLS = [
     type: 'function',
     function: {
       name: 'search_products',
-      description: 'Buscar produtos no catÃ¡logo por termo ou categoria. Perfeito para encontrar o que o cliente procura.',
+      description: 'Buscar produtos no catÃ¡logo por termo ou categoria. Use para encontrar o que o cliente procura.',
       parameters: {
         type: 'object',
         properties: {
           query: {
             type: 'string',
-            description: 'Termo de busca (ex: "chÃ¡", "proteÃ­na", "colÃ¡geno")'
+            description: 'Termo de busca (ex: "chÃ¡", "proteÃ­na", "colÃ¡geno", "castanha")'
           },
           category: {
             type: 'string',
-            enum: ['chÃ¡s', 'suplementos', 'empÃ³rio'],
-            description: 'Categoria opcional para filtrar: chÃ¡s, suplementos ou empÃ³rio'
+            description: 'Categoria para filtrar (ex: "chÃ¡s", "suplementos", "empÃ³rio")'
           }
         },
         required: ['query']
@@ -36,7 +36,24 @@ const TOOLS = [
         properties: {
           product_id: {
             type: 'string',
-            description: 'ID Ãºnico do produto (ex: cha-detox-001)'
+            description: 'ID do produto'
+          }
+        },
+        required: ['product_id']
+      }
+    }
+  },
+  {
+    type: 'function',
+    function: {
+      name: 'check_stock',
+      description: 'Verificar estoque disponÃ­vel de um produto. Use quando o cliente perguntar sobre disponibilidade.',
+      parameters: {
+        type: 'object',
+        properties: {
+          product_id: {
+            type: 'string',
+            description: 'ID do produto para verificar estoque'
           }
         },
         required: ['product_id']
@@ -47,7 +64,7 @@ const TOOLS = [
     type: 'function',
     function: {
       name: 'send_product_image',
-      description: 'Enviar imagem do produto via WhatsApp. Use quando o cliente mostrar interesse em um produto especÃ­fico.',
+      description: 'Enviar imagem do produto via WhatsApp. Use quando o cliente mostrar interesse em um produto.',
       parameters: {
         type: 'object',
         properties: {
@@ -64,7 +81,7 @@ const TOOLS = [
     type: 'function',
     function: {
       name: 'add_to_cart',
-      description: 'Adicionar produto ao carrinho do cliente com quantidade especificada',
+      description: 'Adicionar produto ao carrinho do cliente',
       parameters: {
         type: 'object',
         properties: {
@@ -114,8 +131,42 @@ const TOOLS = [
   {
     type: 'function',
     function: {
+      name: 'validate_coupon',
+      description: 'Validar um cupom de desconto fornecido pelo cliente. Verifica se o cupom existe e estÃ¡ ativo.',
+      parameters: {
+        type: 'object',
+        properties: {
+          coupon_code: {
+            type: 'string',
+            description: 'CÃ³digo do cupom de desconto (ex: "PRIMEIRACOMPRA", "DESCONTO10")'
+          }
+        },
+        required: ['coupon_code']
+      }
+    }
+  },
+  {
+    type: 'function',
+    function: {
+      name: 'check_order_status',
+      description: 'Consultar status de um pedido pelo nÃºmero. Use quando cliente perguntar sobre entrega ou pedido.',
+      parameters: {
+        type: 'object',
+        properties: {
+          order_id: {
+            type: 'string',
+            description: 'NÃºmero do pedido'
+          }
+        },
+        required: ['order_id']
+      }
+    }
+  },
+  {
+    type: 'function',
+    function: {
       name: 'generate_checkout_link',
-      description: 'Gerar link de checkout no Wbuy para finalizar a compra. Use quando cliente estÃ¡ pronto para comprar.',
+      description: 'Gerar link de checkout para finalizar a compra. Use quando cliente estÃ¡ pronto para comprar.',
       parameters: {
         type: 'object',
         properties: {}
@@ -136,11 +187,11 @@ const TOOLS = [
           },
           email: {
             type: 'string',
-            description: 'Email do cliente para contato'
+            description: 'Email do cliente'
           },
           phone: {
             type: 'string',
-            description: 'Telefone/WhatsApp do cliente (opcional se jÃ¡ via WhatsApp)'
+            description: 'Telefone/WhatsApp do cliente'
           }
         },
         required: ['name', 'email']
@@ -151,16 +202,27 @@ const TOOLS = [
     type: 'function',
     function: {
       name: 'get_recommendations',
-      description: 'Obter recomendaÃ§Ãµes personalizadas baseado no perfil e histÃ³rico do cliente',
+      description: 'Obter recomendaÃ§Ãµes personalizadas baseado no perfil do cliente',
       parameters: {
         type: 'object',
         properties: {
           customer_profile: {
             type: 'string',
-            description: 'Perfil do cliente (ex: "emagrecimento", "imunidade", "energia", "beleza")'
+            description: 'Perfil/necessidade do cliente (ex: "emagrecimento", "imunidade", "energia", "beleza", "digestÃ£o")'
           }
         },
         required: ['customer_profile']
+      }
+    }
+  },
+  {
+    type: 'function',
+    function: {
+      name: 'get_categories',
+      description: 'Listar todas as categorias de produtos disponÃ­veis na loja',
+      parameters: {
+        type: 'object',
+        properties: {}
       }
     }
   }
