@@ -47,7 +47,6 @@ app.get('/health', (req, res) => {
 app.get('/status', (req, res) => {
   const sessionStats = getSessionStats();
   const leadStats = getLeadStats();
-
   res.status(200).json({
     status: 'running',
     timestamp: new Date().toISOString(),
@@ -96,7 +95,6 @@ app.get('/debug/leads', (req, res) => {
 
   const leads = getAllLeads();
   const summary = leads.map(l => l.getSummary());
-
   res.status(200).json({
     total: leads.length,
     leads: summary
@@ -104,36 +102,94 @@ app.get('/debug/leads', (req, res) => {
 });
 
 /**
- * Main webhook endpoint for Evolution API
+ * Extract text from Evolution API v2 message object
+ * Handles: conversation, extendedTextMessage, imageMessage, documentMessage, etc.
+ */
+function extractMessageText(message) {
+  if (!message || !message.message) return null;
+
+  const msg = message.message;
+
+  // Plain text message
+  if (msg.conversation) {
+    return msg.conversation.trim();
+  }
+
+  // Extended text (replies, links, etc.)
+  if (msg.extendedTextMessage && msg.extendedTextMessage.text) {
+    return msg.extendedTextMessage.text.trim();
+  }
+
+  // Image with caption
+  if (msg.imageMessage && msg.imageMessage.caption) {
+    return msg.imageMessage.caption.trim();
+  }
+
+  // Video with caption
+  if (msg.videoMessage && msg.videoMessage.caption) {
+    return msg.videoMessage.caption.trim();
+  }
+
+  // Document with caption
+  if (msg.documentMessage && msg.documentMessage.caption) {
+    return msg.documentMessage.caption.trim();
+  }
+
+  // Button response
+  if (msg.buttonsResponseMessage) {
+    return msg.buttonsResponseMessage.selectedDisplayText || msg.buttonsResponseMessage.selectedButtonId || null;
+  }
+
+  // List response
+  if (msg.listResponseMessage) {
+    return msg.listResponseMessage.title || msg.listResponseMessage.singleSelectReply?.selectedRowId || null;
+  }
+
+  return null;
+}
+
+/**
+ * Main webhook endpoint for Evolution API v2
  */
 app.post('/webhook', async (req, res) => {
   try {
-    const { event, data } = req.body;
+    const body = req.body;
+    const event = body.event;
+    const data = body.data;
 
     log('INFO', `Webhook received: ${event}`);
 
     // Handle different event types
     switch (event) {
       case 'messages.upsert': {
-        const message = data.messages?.[0];
-        if (!message) {
+        // Evolution API v2 sends message directly in data (not in data.messages array)
+        const message = data?.messages?.[0] || data;
+
+        if (!message || !message.key) {
+          log('WARN', 'No valid message data in webhook payload');
           return res.status(200).json({ success: false, message: 'No message data' });
         }
 
-        // Only process text messages from users (not from bot)
+        // Only process messages from users (not from bot)
         if (message.key.fromMe) {
           return res.status(200).json({ success: true, skipped: true });
         }
 
-        if (message.message?.conversation) {
-          return await handleTextMessage(message);
+        // Extract text from any message type
+        const textContent = extractMessageText(message);
+
+        if (textContent) {
+          log('INFO', `Text extracted: "${textContent.substring(0, 60)}"`);
+          const result = await handleTextMessage(message, textContent);
+          return res.status(200).json(result);
         }
 
-        return res.status(200).json({ success: true });
+        log('INFO', 'Non-text message received, skipping');
+        return res.status(200).json({ success: true, skipped: true, reason: 'non-text' });
       }
 
       case 'connection.update': {
-        const statusMessage = data?.connection || 'unknown';
+        const statusMessage = data?.connection || data?.state || 'unknown';
         log('INFO', `Connection status: ${statusMessage}`);
         return res.status(200).json({ success: true });
       }
@@ -142,35 +198,40 @@ app.post('/webhook', async (req, res) => {
         log('WARN', `Unknown event type: ${event}`);
         return res.status(200).json({ success: true });
     }
-
   } catch (error) {
     log('ERROR', `Webhook error: ${error.message}`);
-    res.status(500).json({ error: error.message });
+    log('ERROR', `Stack: ${error.stack}`);
+    return res.status(200).json({ error: error.message });
   }
-
-  // Always return 200 to acknowledge receipt
-  res.status(200).json({ success: true });
 });
 
 /**
  * Handle incoming text message
  */
-async function handleTextMessage(message) {
+async function handleTextMessage(message, textContent) {
   try {
     const phoneNumber = message.key.remoteJid.replace('@s.whatsapp.net', '');
-    const userMessage = message.message.conversation.trim();
+    const pushName = message.pushName || '';
 
-    log('INFO', `Message from ${phoneNumber}: ${userMessage.substring(0, 50)}`);
+    log('INFO', `Message from ${phoneNumber} (${pushName}): ${textContent.substring(0, 50)}`);
 
     // Get or create session
     const session = getSession(phoneNumber);
     const isFirstMessage = session.conversationHistory.length === 0;
 
+    // Store customer name from pushName if available
+    if (pushName && !session.customer.name) {
+      session.customer.name = pushName;
+    }
+
     // Process message with AI
-    const response = await processMessage(phoneNumber, userMessage);
+    const response = await processMessage(phoneNumber, textContent);
 
     if (!response.success) {
       log('ERROR', `Failed to process message: ${response.error}`);
+      // Send a fallback message
+      await sendTextMessage(phoneNumber, 'Desculpe, estou com uma dificuldade tecnica no momento. Pode tentar novamente em alguns instantes?');
+      return { success: false, error: response.error };
     }
 
     // Send response via Evolution API
@@ -182,16 +243,12 @@ async function handleTextMessage(message) {
     }
 
     log('INFO', `Response sent to ${phoneNumber}`);
-
-    return {
-      success: true,
-      phoneNumber,
-      messageProcessed: true
-    };
+    return { success: true, phoneNumber, messageProcessed: true };
 
   } catch (error) {
     log('ERROR', `Error handling text message: ${error.message}`);
-    throw error;
+    log('ERROR', `Stack: ${error.stack}`);
+    return { success: false, error: error.message };
   }
 }
 
@@ -214,12 +271,13 @@ async function sendTextMessage(phoneNumber, message) {
         timeout: 10000
       }
     );
-
     log('INFO', `Text message sent to ${phoneNumber}`);
     return response.data;
-
   } catch (error) {
-    log('ERROR', `Failed to send text message: ${error.message}`);
+    log('ERROR', `Failed to send text message to ${phoneNumber}: ${error.message}`);
+    if (error.response) {
+      log('ERROR', `Evolution API response: ${JSON.stringify(error.response.data)}`);
+    }
     throw error;
   }
 }
@@ -237,7 +295,6 @@ app.post('/test/send-message', async (req, res) => {
 
     await sendTextMessage(phoneNumber, message);
     res.status(200).json({ success: true });
-
   } catch (error) {
     res.status(500).json({ error: error.message });
   }
@@ -249,7 +306,6 @@ app.post('/test/send-message', async (req, res) => {
 app.post('/test/start-conversation', async (req, res) => {
   try {
     const { phoneNumber } = req.body;
-
     if (!phoneNumber) {
       return res.status(400).json({ error: 'phoneNumber required' });
     }
@@ -269,7 +325,6 @@ app.post('/test/start-conversation', async (req, res) => {
       message: 'Conversation started',
       greeting: greeting
     });
-
   } catch (error) {
     res.status(500).json({ error: error.message });
   }
