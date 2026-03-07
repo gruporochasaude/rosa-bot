@@ -7,7 +7,7 @@ require('dotenv').config();
 
 const express = require('express');
 const axios = require('axios');
-const { processMessage, getGreetingMessage, executeMediaActions } = require('./agent');
+const { initAgent, processMessage, getGreetingMessage, executeMediaActions } = require('./agent');
 const { getSession, cleanupStaleSessions, getSessionStats } = require('./sessions');
 const { getLeadStats, getAllLeads } = require('./leads');
 
@@ -61,11 +61,12 @@ app.get('/status', (req, res) => {
  * Debugging endpoint - list all active sessions
  */
 app.get('/debug/sessions', (req, res) => {
+  // Verify token
   if (req.query.token !== WEBHOOK_TOKEN) {
     return res.status(401).json({ error: 'Unauthorized' });
   }
 
-  const { getAllSessions } = require('./sessions');
+  const { getAllSessions, exportSessionData } = require('./sessions');
   const sessions = getAllSessions();
 
   const sessionsData = sessions.map(session => ({
@@ -88,6 +89,7 @@ app.get('/debug/sessions', (req, res) => {
  * Debugging endpoint - list all leads
  */
 app.get('/debug/leads', (req, res) => {
+  // Verify token
   if (req.query.token !== WEBHOOK_TOKEN) {
     return res.status(401).json({ error: 'Unauthorized' });
   }
@@ -102,182 +104,94 @@ app.get('/debug/leads', (req, res) => {
 });
 
 /**
- * Extract text from various WhatsApp message formats
- */
-function extractMessageText(message) {
-  if (!message || !message.message) return null;
-
-  const msg = message.message;
-
-  // Plain text conversation
-  if (msg.conversation) return msg.conversation;
-
-  // Extended text message (replies, links, etc)
-  if (msg.extendedTextMessage?.text) return msg.extendedTextMessage.text;
-
-  // Image with caption
-  if (msg.imageMessage?.caption) return msg.imageMessage.caption;
-
-  // Video with caption
-  if (msg.videoMessage?.caption) return msg.videoMessage.caption;
-
-  // Document with caption
-  if (msg.documentMessage?.caption) return msg.documentMessage.caption;
-
-  // Button response
-  if (msg.buttonsResponseMessage?.selectedDisplayText) return msg.buttonsResponseMessage.selectedDisplayText;
-
-  // List response
-  if (msg.listResponseMessage?.title) return msg.listResponseMessage.title;
-
-  return null;
-}
-
-/**
- * Extract message data from various Evolution API payload formats
- */
-function extractMessageFromWebhook(body) {
-  // Log full payload for debugging
-  log('DEBUG', `Webhook body keys: ${Object.keys(body).join(', ')}`);
-
-  const event = body.event;
-  let messageData = null;
-
-  // Format 1: { event, data: { messages: [...] } }
-  if (body.data?.messages && Array.isArray(body.data.messages)) {
-    messageData = body.data.messages[0];
-    log('DEBUG', 'Format: data.messages[]');
-  }
-  // Format 2: { event, data: [...] } (data is the array)
-  else if (Array.isArray(body.data)) {
-    messageData = body.data[0];
-    log('DEBUG', 'Format: data[]');
-  }
-  // Format 3: { event, data: { key, message, ... } } (data is the message)
-  else if (body.data?.key) {
-    messageData = body.data;
-    log('DEBUG', 'Format: data as message');
-  }
-  // Format 4: { event, instance, data: [...] } (Evolution v2 common)
-  else if (body.instance && body.data) {
-    if (Array.isArray(body.data)) {
-      messageData = body.data[0];
-    } else if (body.data.key) {
-      messageData = body.data;
-    }
-    log('DEBUG', `Format: with instance, data type: ${typeof body.data}`);
-  }
-
-  if (messageData) {
-    log('DEBUG', `Message key: ${JSON.stringify(messageData.key || {})}`);
-    log('DEBUG', `Message types: ${Object.keys(messageData.message || {}).join(', ')}`);
-  } else {
-    log('WARN', `Could not extract message. Body: ${JSON.stringify(body).substring(0, 500)}`);
-  }
-
-  return { event, messageData };
-}
-
-/**
  * Main webhook endpoint for Evolution API
  */
 app.post('/webhook', async (req, res) => {
   try {
-    const { event, messageData } = extractMessageFromWebhook(req.body);
+    const { event, data } = req.body;
 
     log('INFO', `Webhook received: ${event}`);
 
     // Handle different event types
     switch (event) {
       case 'messages.upsert': {
-        if (!messageData) {
-          log('WARN', 'No message data found in webhook payload');
+        const message = data.messages?.[0];
+        if (!message) {
           return res.status(200).json({ success: false, message: 'No message data' });
         }
 
-        // Skip messages sent by the bot itself
-        if (messageData.key?.fromMe) {
-          log('DEBUG', 'Skipping own message');
+        // Only process text messages from users (not from bot)
+        if (message.key.fromMe) {
           return res.status(200).json({ success: true, skipped: true });
         }
 
-        // Extract text from message
-        const text = extractMessageText(messageData);
-        if (!text) {
-          log('DEBUG', `No text content in message. Types: ${Object.keys(messageData.message || {}).join(', ')}`);
-          return res.status(200).json({ success: true, noText: true });
+        if (message.message?.conversation) {
+          return await handleTextMessage(message);
         }
 
-        // Process the text message
-        const phoneNumber = messageData.key.remoteJid.replace('@s.whatsapp.net', '');
-        log('INFO', `Message from ${phoneNumber}: ${text.substring(0, 100)}`);
-
-        // Respond to webhook immediately, process in background
-        res.status(200).json({ success: true, processing: true });
-
-        // Process message asynchronously (don't await in the response)
-        handleTextMessage(phoneNumber, text).catch(err => {
-          log('ERROR', `Background message processing failed: ${err.message}`);
-        });
-        return;
+        return res.status(200).json({ success: true });
       }
 
       case 'connection.update': {
-        const status = req.body.data?.state || req.body.data?.connection || 'unknown';
-        log('INFO', `Connection status: ${status}`);
+        const statusMessage = data?.connection || 'unknown';
+        log('INFO', `Connection status: ${statusMessage}`);
         return res.status(200).json({ success: true });
       }
 
       default:
-        log('DEBUG', `Event type: ${event}`);
+        log('WARN', `Unknown event type: ${event}`);
         return res.status(200).json({ success: true });
     }
 
   } catch (error) {
     log('ERROR', `Webhook error: ${error.message}`);
-    log('ERROR', `Stack: ${error.stack}`);
-    return res.status(200).json({ error: error.message });
+    res.status(500).json({ error: error.message });
   }
+
+  // Always return 200 to acknowledge receipt
+  res.status(200).json({ success: true });
 });
 
 /**
  * Handle incoming text message
  */
-async function handleTextMessage(phoneNumber, text) {
+async function handleTextMessage(message) {
   try {
-    log('INFO', `Processing message from ${phoneNumber}...`);
+    const phoneNumber = message.key.remoteJid.replace('@s.whatsapp.net', '');
+    const userMessage = message.message.conversation.trim();
+
+    log('INFO', `Message from ${phoneNumber}: ${userMessage.substring(0, 50)}`);
 
     // Get or create session
     const session = getSession(phoneNumber);
+    const isFirstMessage = session.conversationHistory.length === 0;
 
     // Process message with AI
-    const response = await processMessage(phoneNumber, text);
+    const response = await processMessage(phoneNumber, userMessage);
 
     if (!response.success) {
       log('ERROR', `Failed to process message: ${response.error}`);
-      // Send error message to user
-      await sendTextMessage(phoneNumber, 'Desculpe, estou com um probleminha tÃ©cnico. Pode tentar novamente em alguns instantes? ð');
-      return;
     }
 
     // Send response via Evolution API
     await sendTextMessage(phoneNumber, response.message);
-    log('INFO', `Response sent to ${phoneNumber}: ${response.message.substring(0, 100)}...`);
 
     // Execute any media sends (images)
     if (response.toolCalls && response.toolCalls.length > 0) {
       await executeMediaActions(phoneNumber, response.toolCalls);
     }
 
+    log('INFO', `Response sent to ${phoneNumber}`);
+
+    return {
+      success: true,
+      phoneNumber,
+      messageProcessed: true
+    };
+
   } catch (error) {
-    log('ERROR', `Error handling text message from ${phoneNumber}: ${error.message}`);
-    log('ERROR', `Stack: ${error.stack}`);
-    // Try to send error message
-    try {
-      await sendTextMessage(phoneNumber, 'Ops! Tive um probleminha aqui. Tenta de novo? ð');
-    } catch (sendError) {
-      log('ERROR', `Failed to send error message: ${sendError.message}`);
-    }
+    log('ERROR', `Error handling text message: ${error.message}`);
+    throw error;
   }
 }
 
@@ -286,11 +200,8 @@ async function handleTextMessage(phoneNumber, text) {
  */
 async function sendTextMessage(phoneNumber, message) {
   try {
-    const url = `${EVOLUTION_API_URL}/message/sendText/${INSTANCE_NAME}`;
-    log('DEBUG', `Sending message to ${phoneNumber} via ${url}`);
-
     const response = await axios.post(
-      url,
+      `${EVOLUTION_API_URL}/message/sendText/${INSTANCE_NAME}`,
       {
         number: phoneNumber,
         text: message
@@ -300,18 +211,15 @@ async function sendTextMessage(phoneNumber, message) {
           'apikey': EVOLUTION_API_KEY,
           'Content-Type': 'application/json'
         },
-        timeout: 15000
+        timeout: 10000
       }
     );
 
-    log('INFO', `Text message sent to ${phoneNumber} (status: ${response.status})`);
+    log('INFO', `Text message sent to ${phoneNumber}`);
     return response.data;
 
   } catch (error) {
-    const errDetails = error.response
-      ? `Status: ${error.response.status}, Data: ${JSON.stringify(error.response.data).substring(0, 200)}`
-      : error.message;
-    log('ERROR', `Failed to send text message to ${phoneNumber}: ${errDetails}`);
+    log('ERROR', `Failed to send text message: ${error.message}`);
     throw error;
   }
 }
@@ -346,10 +254,14 @@ app.post('/test/start-conversation', async (req, res) => {
       return res.status(400).json({ error: 'phoneNumber required' });
     }
 
+    // Get greeting
     const greeting = getGreetingMessage();
+
+    // Initialize session
     const session = getSession(phoneNumber);
     session.addMessage('assistant', greeting);
 
+    // Send message
     await sendTextMessage(phoneNumber, greeting);
 
     res.status(200).json({
@@ -371,7 +283,7 @@ setInterval(() => {
   if (cleaned > 0) {
     log('INFO', `Cleaned up ${cleaned} stale sessions`);
   }
-}, 5 * 60 * 1000);
+}, 5 * 60 * 1000); // Every 5 minutes
 
 /**
  * Error handling middleware
@@ -397,13 +309,19 @@ app.use((req, res) => {
 /**
  * Start server
  */
-app.listen(PORT, () => {
+app.listen(PORT, async () => {
   log('INFO', `Rosa 2.0 WhatsApp Bot started on port ${PORT}`);
   log('INFO', `Webhook URL: http://localhost:${PORT}/webhook`);
   log('INFO', `Status URL: http://localhost:${PORT}/status`);
   log('INFO', `Environment: ${process.env.NODE_ENV || 'development'}`);
-  log('INFO', `Evolution API: ${EVOLUTION_API_URL}`);
-  log('INFO', `Instance: ${INSTANCE_NAME}`);
+
+  // Initialize Wbuy product catalog
+  try {
+    await initAgent();
+    log('INFO', 'Wbuy product catalog loaded successfully');
+  } catch (error) {
+    log('WARN', `Failed to load Wbuy catalog: ${error.message}. Using fallback products.`);
+  }
 });
 
 /**
@@ -417,11 +335,6 @@ process.on('SIGTERM', () => {
 process.on('SIGINT', () => {
   log('INFO', 'SIGINT received, shutting down gracefully');
   process.exit(0);
-});
-
-// Catch unhandled rejections
-process.on('unhandledRejection', (reason, promise) => {
-  log('ERROR', `Unhandled Rejection: ${reason}`);
 });
 
 module.exports = app;
