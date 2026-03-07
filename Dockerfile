@@ -1,7 +1,23 @@
 FROM node:20-alpine
+
 WORKDIR /app
+
+# Copy package files
 COPY package*.json ./
-RUN npm install --production
+
+# Install dependencies
+RUN npm ci --only=production
+
+# Copy application code
 COPY src/ ./src/
+COPY .env* ./
+
+# Expose port
 EXPOSE 3000
-CMD ["npm", "start"]
+
+# Health check
+HEALTHCHECK --interval=30s --timeout=10s --start-period=40s --retries=3 \
+  CMD node -e "require('http').get('http://localhost:3000/health', (r) => {if (r.statusCode !== 200) throw new Error(r.statusCode)})"
+
+# Start application
+CMD ["node", "src/server.js"]
