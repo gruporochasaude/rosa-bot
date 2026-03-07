@@ -1,257 +1,364 @@
 /**
  * Product Catalog for Rosa 2.0
- * Hardcoded catalog of natural products with details
+ * Fetches products from Wbuy API with intelligent caching
+ * Falls back to local cache if API is unavailable
  */
 
-const PRODUCTS = [
-  // ChÃ¡s Naturais (Own Brand - Main Products)
-  {
-    id: 'cha-detox-001',
-    name: 'ChÃ¡ Detox Rosa',
-    category: 'chÃ¡s',
-    description: 'Mistura natural de ervas para limpeza do organismo. FÃ³rmula exclusiva da Rosa com camomila, gengibre e lemongrass.',
-    price: 29.90,
-    imageUrl: 'https://via.placeholder.com/400x300?text=Cha+Detox+Rosa',
-    checkoutUrl: 'https://wbuy.com.br/gruporochasaude/cha-detox-rosa',
-    benefits: ['DesintoxicaÃ§Ã£o', 'DigestÃ£o', 'Energia'],
-    popularity: 9
-  },
-  {
-    id: 'cha-relaxante-001',
-    name: 'ChÃ¡ Relaxante Rosa',
-    category: 'chÃ¡s',
-    description: 'Blend calmante com valeriana, passiflora e melissa. Perfeito para noites tranquilas e estresse.',
-    price: 27.90,
-    imageUrl: 'https://via.placeholder.com/400x300?text=Cha+Relaxante',
-    checkoutUrl: 'https://wbuy.com.br/gruporochasaude/cha-relaxante',
-    benefits: ['Relaxamento', 'Sono', 'Estresse'],
-    popularity: 8
-  },
-  {
-    id: 'cha-emagrecedor-001',
-    name: 'ChÃ¡ Emagrecedor Rosa',
-    category: 'chÃ¡s',
-    description: 'ChÃ¡ termogÃªnico natural com chÃ¡ verde, gengibre e canela. Acelera o metabolismo naturalmente.',
-    price: 31.90,
-    imageUrl: 'https://via.placeholder.com/400x300?text=Cha+Emagrecedor',
-    checkoutUrl: 'https://wbuy.com.br/gruporochasaude/cha-emagrecedor',
-    benefits: ['Metabolismo', 'Energia', 'Detox'],
-    popularity: 10
-  },
-  {
-    id: 'cha-digestivo-001',
-    name: 'ChÃ¡ Digestivo Rosa',
-    category: 'chÃ¡s',
-    description: 'FÃ³rmula suave com gengibre, hortelÃ£ e funcho. Alivia inchaÃ§o e facilita a digestÃ£o pÃ³s-refeiÃ§Ãµes.',
-    price: 25.90,
-    imageUrl: 'https://via.placeholder.com/400x300?text=Cha+Digestivo',
-    checkoutUrl: 'https://wbuy.com.br/gruporochasaude/cha-digestivo',
-    benefits: ['DigestÃ£o', 'InchaÃ§o', 'Conforto'],
-    popularity: 7
-  },
-  {
-    id: 'cha-imunidade-001',
-    name: 'ChÃ¡ Imunidade Rosa',
-    category: 'chÃ¡s',
-    description: 'Blend fortalecedor com gengibre, cÃºrcuma, cravo e canela. ReforÃ§a suas defesas naturais.',
-    price: 33.90,
-    imageUrl: 'https://via.placeholder.com/400x300?text=Cha+Imunidade',
-    checkoutUrl: 'https://wbuy.com.br/gruporochasaude/cha-imunidade',
-    benefits: ['Imunidade', 'InflamaÃ§Ã£o', 'Antioxidante'],
-    popularity: 9
-  },
+const wbuy = require('./wbuy-api');
 
-  // Suplementos
-  {
-    id: 'whey-protein-001',
-    name: 'Whey Protein Isolado 900g',
-    category: 'suplementos',
-    description: 'ProteÃ­na de alto valor biolÃ³gico. Ajuda na recuperaÃ§Ã£o muscular e ganho de massa magra.',
-    price: 119.90,
-    imageUrl: 'https://via.placeholder.com/400x300?text=Whey+Protein',
-    checkoutUrl: 'https://wbuy.com.br/gruporochasaude/whey-protein-isolado',
-    benefits: ['ProteÃ­na', 'RecuperaÃ§Ã£o', 'MÃºsculos'],
-    popularity: 8
-  },
-  {
-    id: 'colageno-001',
-    name: 'ColÃ¡geno Hidrolisado 300g',
-    category: 'suplementos',
-    description: 'ColÃ¡geno puro para pele, cabelo, unhas e articulaÃ§Ãµes. EficÃ¡cia comprovada.',
-    price: 89.90,
-    imageUrl: 'https://via.placeholder.com/400x300?text=Colageno',
-    checkoutUrl: 'https://wbuy.com.br/gruporochasaude/colageno-hidrolisado',
-    benefits: ['Pele', 'Cabelo', 'ArticulaÃ§Ãµes'],
-    popularity: 9
-  },
-  {
-    id: 'vitamina-c-001',
-    name: 'Vitamina C 1000mg 60 cÃ¡psulas',
-    category: 'suplementos',
-    description: 'Vitamina C natural para imunidade e colÃ¡geno. AbsorÃ§Ã£o otimizada.',
-    price: 45.90,
-    imageUrl: 'https://via.placeholder.com/400x300?text=Vitamina+C',
-    checkoutUrl: 'https://wbuy.com.br/gruporochasaude/vitamina-c-1000mg',
-    benefits: ['Imunidade', 'Antioxidante', 'ColÃ¡geno'],
-    popularity: 7
-  },
-  {
-    id: 'vitamina-d-001',
-    name: 'Vitamina D3 2000ui 60 cÃ¡psulas',
-    category: 'suplementos',
-    description: 'Vitamina D3 de alga vermelha. Ossos fortes e imunidade otimizada.',
-    price: 52.90,
-    imageUrl: 'https://via.placeholder.com/400x300?text=Vitamina+D3',
-    checkoutUrl: 'https://wbuy.com.br/gruporochasaude/vitamina-d3-2000ui',
-    benefits: ['Ossos', 'Imunidade', 'CÃ¡lcio'],
-    popularity: 8
-  },
-  {
-    id: 'omega-3-001',
-    name: 'Ãmega 3 Premium 120 cÃ¡psulas',
-    category: 'suplementos',
-    description: 'Ãmega 3 puro com EPA e DHA. CoraÃ§Ã£o saudÃ¡vel e cÃ©rebro ativo.',
-    price: 79.90,
-    imageUrl: 'https://via.placeholder.com/400x300?text=Omega+3',
-    checkoutUrl: 'https://wbuy.com.br/gruporochasaude/omega-3-premium',
-    benefits: ['CoraÃ§Ã£o', 'CÃ©rebro', 'InflamaÃ§Ã£o'],
-    popularity: 8
-  },
+// Local product cache for fast responses
+let productCache = [];
+let categoriesCache = [];
+let lastCacheUpdate = 0;
+const CACHE_DURATION = 10 * 60 * 1000; // 10 min
+let isInitialized = false;
 
-  // EmpÃ³rio (Naturais)
-  {
-    id: 'farinha-amendoas-001',
-    name: 'Farinha de AmÃªndoas 500g',
-    category: 'empÃ³rio',
-    description: 'Farinha natural de amÃªndoas sem glÃºten. Ideal para receitas saudÃ¡veis e low-carb.',
-    price: 35.90,
-    imageUrl: 'https://via.placeholder.com/400x300?text=Farinha+Amendoas',
-    checkoutUrl: 'https://wbuy.com.br/gruporochasaude/farinha-amendoas-500g',
-    benefits: ['ProteÃ­na', 'Sem glÃºten', 'Low-carb'],
-    popularity: 6
-  },
-  {
-    id: 'castanha-para-001',
-    name: 'Castanha do ParÃ¡ OrgÃ¢nica 200g',
-    category: 'empÃ³rio',
-    description: 'Castanha do ParÃ¡ premium com selÃªnio e antioxidantes naturais. Superfood autÃªntico.',
-    price: 42.90,
-    imageUrl: 'https://via.placeholder.com/400x300?text=Castanha+Para',
-    checkoutUrl: 'https://wbuy.com.br/gruporochasaude/castanha-para-organica',
-    benefits: ['SelÃªnio', 'Antioxidante', 'Energia'],
-    popularity: 7
-  },
-  {
-    id: 'granola-artesanal-001',
-    name: 'Granola Artesanal 400g',
-    category: 'empÃ³rio',
-    description: 'Granola caseira com frutas secas, amÃªndoas e mel. Sem aÃ§Ãºcar refinado.',
-    price: 38.90,
-    imageUrl: 'https://via.placeholder.com/400x300?text=Granola+Artesanal',
-    checkoutUrl: 'https://wbuy.com.br/gruporochasaude/granola-artesanal-400g',
-    benefits: ['Fibra', 'Energia', 'CafÃ© da manhÃ£'],
-    popularity: 7
-  },
-  {
-    id: 'mel-organico-001',
-    name: 'Mel OrgÃ¢nico Puro 500g',
-    category: 'empÃ³rio',
-    description: 'Mel silvestre puro colhido direto do produtor. Sem aditivos ou pasteurizaÃ§Ã£o excessiva.',
-    price: 45.90,
-    imageUrl: 'https://via.placeholder.com/400x300?text=Mel+Organico',
-    checkoutUrl: 'https://wbuy.com.br/gruporochasaude/mel-organico-500g',
-    benefits: ['Energia', 'Imunidade', 'AntialÃ©rgico'],
-    popularity: 8
-  },
-  {
-    id: 'oleo-coco-001',
-    name: 'Ãleo de Coco Extra Virgem 500ml',
-    category: 'empÃ³rio',
-    description: 'Ãleo de coco prensado a frio. Perfeito para culinÃ¡ria e beleza natural.',
-    price: 39.90,
-    imageUrl: 'https://via.placeholder.com/400x300?text=Oleo+Coco',
-    checkoutUrl: 'https://wbuy.com.br/gruporochasaude/oleo-coco-extra-virgem',
-    benefits: ['CulinÃ¡ria', 'Beleza', 'TCM'],
-    popularity: 8
+/**
+ * Initialize product catalog from Wbuy API
+ * Called on startup and periodically refreshes
+ */
+async function initializeProducts() {
+  try {
+    console.log('[Products] Initializing product catalog from Wbuy API...');
+
+    const result = await wbuy.getProducts(1, 100);
+    let products = [];
+
+    if (Array.isArray(result)) {
+      products = result;
+    } else if (result && result.data) {
+      products = result.data;
+
+      // Fetch additional pages if needed
+      if (result.total && result.total > 100) {
+        const totalPages = Math.ceil(result.total / 100);
+        for (let p = 2; p <= totalPages && p <= 10; p++) {
+          try {
+            const nextPage = await wbuy.getProducts(p, 100);
+            const items = Array.isArray(nextPage) ? nextPage : (nextPage.data || []);
+            products = products.concat(items);
+          } catch (err) {
+            console.error(`[Products] Error fetching page ${p}:`, err.message);
+            break;
+          }
+        }
+      }
+    }
+
+    // Normalize product data
+    productCache = products.map(normalizeProduct).filter(p => p.active);
+
+    console.log(`[Products] Loaded ${productCache.length} active products from Wbuy`);
+
+    // Load categories
+    try {
+      const cats = await wbuy.getCategories();
+      categoriesCache = Array.isArray(cats) ? cats : (cats?.data || []);
+      console.log(`[Products] Loaded ${categoriesCache.length} categories`);
+    } catch (err) {
+      console.error('[Products] Error loading categories:', err.message);
+    }
+
+    lastCacheUpdate = Date.now();
+    isInitialized = true;
+    return true;
+  } catch (error) {
+    console.error('[Products] Failed to initialize from Wbuy:', error.message);
+
+    if (productCache.length === 0) {
+      console.log('[Products] Loading fallback products...');
+      productCache = getFallbackProducts();
+      isInitialized = true;
+    }
+    return false;
   }
-];
+}
+
+/**
+ * Normalize product data from Wbuy format to internal format
+ */
+function normalizeProduct(raw) {
+  return {
+    id: String(raw.id || raw.product_id || ''),
+    name: raw.name || raw.nome || 'Produto sem nome',
+    sku: raw.sku || '',
+    category: raw.category || raw.categoria || raw.category_name || '',
+    categoryId: raw.category_id || raw.categoria_id || '',
+    description: raw.description || raw.descricao || raw.short_description || raw.descricao_curta || '',
+    price: parseFloat(raw.price || raw.preco || raw.valor || raw.price_sale || 0),
+    priceOriginal: parseFloat(raw.price_original || raw.preco_original || raw.price_compare || 0),
+    imageUrl: raw.image || raw.imagem || raw.photo || raw.foto || raw.thumbnail || '',
+    slug: raw.slug || raw.url || '',
+    active: raw.active !== false && raw.ativo !== false && raw.status !== 'inactive',
+    stock: raw.stock || raw.estoque || raw.quantity || null,
+    weight: raw.weight || raw.peso || 0,
+    brand: raw.brand || raw.marca || '',
+    benefits: raw.benefits || [],
+    popularity: raw.popularity || raw.views || 0
+  };
+}
+
+/**
+ * Ensure cache is fresh
+ */
+async function ensureFreshCache() {
+  if (!isInitialized || (Date.now() - lastCacheUpdate > CACHE_DURATION)) {
+    await initializeProducts();
+  }
+}
 
 /**
  * Search products by query and optional category
- * @param {string} query - Search term
- * @param {string} category - Optional category filter
- * @returns {Array} Matching products
  */
-function searchProducts(query, category = null) {
-  let results = PRODUCTS;
+async function searchProducts(query, category = null) {
+  await ensureFreshCache();
 
+  let results = [...productCache];
+
+  // Filter by category
   if (category) {
-    results = results.filter(p => p.category.toLowerCase() === category.toLowerCase());
-  }
-
-  if (query && query.trim()) {
-    const q = query.toLowerCase();
+    const cat = category.toLowerCase();
     results = results.filter(p =>
-      p.name.toLowerCase().includes(q) ||
-      p.description.toLowerCase().includes(q) ||
-      p.benefits.some(b => b.toLowerCase().includes(q))
+      p.category.toLowerCase().includes(cat) ||
+      p.categoryId.toString() === category
     );
   }
 
-  // Sort by popularity
-  return results.sort((a, b) => b.popularity - a.popularity);
+  // Filter by search query
+  if (query && query.trim()) {
+    const q = query.toLowerCase();
+    const terms = q.split(/\s+/);
+
+    results = results.filter(p => {
+      const searchText = `${p.name} ${p.description} ${p.category} ${p.brand} ${p.sku} ${p.benefits.join(' ')}`.toLowerCase();
+      return terms.every(term => searchText.includes(term));
+    });
+  }
+
+  // Sort by relevance
+  results.sort((a, b) => {
+    // Exact name match first
+    const aNameMatch = query ? a.name.toLowerCase().includes(query.toLowerCase()) : false;
+    const bNameMatch = query ? b.name.toLowerCase().includes(query.toLowerCase()) : false;
+    if (aNameMatch && !bNameMatch) return -1;
+    if (!aNameMatch && bNameMatch) return 1;
+
+    // Then by popularity/stock
+    if (a.stock !== null && b.stock !== null) {
+      if (a.stock > 0 && b.stock <= 0) return -1;
+      if (a.stock <= 0 && b.stock > 0) return 1;
+    }
+
+    return (b.popularity || 0) - (a.popularity || 0);
+  });
+
+  return results.slice(0, 10);
 }
 
 /**
  * Get product details by ID
- * @param {string} productId - Product ID
- * @returns {Object|null} Product object or null if not found
  */
-function getProductDetails(productId) {
-  return PRODUCTS.find(p => p.id === productId) || null;
+async function getProductDetails(productId) {
+  await ensureFreshCache();
+
+  // Try local cache first
+  let product = productCache.find(p => p.id === productId || p.sku === productId);
+
+  if (!product) {
+    // Try fetching from API directly
+    try {
+      const raw = await wbuy.getProduct(productId);
+      if (raw) {
+        product = normalizeProduct(raw);
+      }
+    } catch (error) {
+      console.error(`[Products] Error fetching product ${productId}:`, error.message);
+    }
+  }
+
+  return product || null;
 }
 
 /**
  * Get all categories
- * @returns {Array} Unique categories
  */
-function getCategories() {
-  return [...new Set(PRODUCTS.map(p => p.category))];
+async function getCategories() {
+  await ensureFreshCache();
+
+  if (categoriesCache.length > 0) {
+    return categoriesCache.map(c => ({
+      id: c.id || c.category_id,
+      name: c.name || c.nome || c.category_name
+    }));
+  }
+
+  // Derive categories from products
+  const cats = new Map();
+  productCache.forEach(p => {
+    if (p.category && !cats.has(p.category)) {
+      cats.set(p.category, { id: p.categoryId, name: p.category });
+    }
+  });
+
+  return Array.from(cats.values());
 }
 
 /**
  * Get products by category
- * @param {string} category - Category name
- * @returns {Array} Products in category
  */
-function getProductsByCategory(category) {
-  return PRODUCTS.filter(p => p.category === category).sort((a, b) => b.popularity - a.popularity);
+async function getProductsByCategory(category) {
+  return searchProducts('', category);
 }
 
 /**
- * Get top products (most popular)
- * @param {number} limit - Number of top products
- * @returns {Array} Top products
+ * Get top/popular products
  */
-function getTopProducts(limit = 5) {
-  return [...PRODUCTS].sort((a, b) => b.popularity - a.popularity).slice(0, limit);
+async function getTopProducts(limit = 5) {
+  await ensureFreshCache();
+
+  return [...productCache]
+    .filter(p => p.active && (p.stock === null || p.stock > 0))
+    .sort((a, b) => (b.popularity || 0) - (a.popularity || 0))
+    .slice(0, limit);
 }
 
 /**
- * Format product for display
- * @param {Object} product - Product object
- * @returns {string} Formatted product string
+ * Check product stock
+ */
+async function checkStock(productId) {
+  try {
+    const stock = await wbuy.getProductStock(productId);
+    return {
+      productId,
+      inStock: stock ? (stock.quantity || stock.quantidade || stock.estoque || 0) > 0 : false,
+      quantity: stock ? (stock.quantity || stock.quantidade || stock.estoque || 0) : 0
+    };
+  } catch (error) {
+    // Try local cache
+    const product = productCache.find(p => p.id === productId);
+    return {
+      productId,
+      inStock: product ? product.stock > 0 : false,
+      quantity: product ? product.stock : 0
+    };
+  }
+}
+
+/**
+ * Get product photo URL
+ */
+async function getProductPhotoUrl(productId) {
+  // Try local cache first
+  const product = productCache.find(p => p.id === productId);
+  if (product && product.imageUrl) {
+    return product.imageUrl;
+  }
+
+  // Try API
+  return await wbuy.getMainPhotoUrl(productId);
+}
+
+/**
+ * Format product for display in WhatsApp
  */
 function formatProduct(product) {
-  return `ð¦ *${product.name}*\nð¬ ${product.description}\nð° R$ ${product.price.toFixed(2)}\nâ¨ BenefÃ­cios: ${product.benefits.join(', ')}`;
+  if (!product) return 'Produto nÃ£o encontrado.';
+
+  let text = `*${product.name}*\n`;
+
+  if (product.description) {
+    const desc = product.description.replace(/<[^>]*>/g, '').substring(0, 250);
+    text += `${desc}\n`;
+  }
+
+  text += `\n*R$ ${product.price.toFixed(2)}*`;
+
+  if (product.priceOriginal && product.priceOriginal > product.price) {
+    const discount = Math.round((1 - product.price / product.priceOriginal) * 100);
+    text += ` ~R$ ${product.priceOriginal.toFixed(2)}~ (-${discount}%)`;
+  }
+
+  if (product.brand) {
+    text += `\nMarca: ${product.brand}`;
+  }
+
+  if (product.benefits && product.benefits.length > 0) {
+    text += `\nBenefÃ­cios: ${product.benefits.join(', ')}`;
+  }
+
+  if (product.stock !== null) {
+    text += product.stock > 0
+      ? `\nâ Em estoque (${product.stock} unidades)`
+      : '\nâ Fora de estoque';
+  }
+
+  return text;
+}
+
+/**
+ * Get checkout URL for product
+ */
+function getCheckoutUrl(product) {
+  if (!product) return 'https://www.gruporochasaude.com';
+  return wbuy.getCheckoutUrl(product);
+}
+
+/**
+ * Fallback products when API is unavailable
+ */
+function getFallbackProducts() {
+  return [
+    {
+      id: 'cha-detox-001', name: 'ChÃ¡ Detox Rosa', sku: '', category: 'chÃ¡s',
+      categoryId: '', description: 'Mistura natural de ervas para limpeza do organismo.',
+      price: 29.90, priceOriginal: 0, imageUrl: '', slug: 'cha-detox-rosa',
+      active: true, stock: null, weight: 0, brand: 'Rosa',
+      benefits: ['DesintoxicaÃ§Ã£o', 'DigestÃ£o', 'Energia'], popularity: 9
+    },
+    {
+      id: 'cha-emagrecedor-001', name: 'ChÃ¡ Emagrecedor Rosa', sku: '', category: 'chÃ¡s',
+      categoryId: '', description: 'ChÃ¡ termogÃªnico natural com chÃ¡ verde, gengibre e canela.',
+      price: 31.90, priceOriginal: 0, imageUrl: '', slug: 'cha-emagrecedor',
+      active: true, stock: null, weight: 0, brand: 'Rosa',
+      benefits: ['Metabolismo', 'Energia', 'Detox'], popularity: 10
+    },
+    {
+      id: 'cha-relaxante-001', name: 'ChÃ¡ Relaxante Rosa', sku: '', category: 'chÃ¡s',
+      categoryId: '', description: 'Blend calmante com valeriana, passiflora e melissa.',
+      price: 27.90, priceOriginal: 0, imageUrl: '', slug: 'cha-relaxante',
+      active: true, stock: null, weight: 0, brand: 'Rosa',
+      benefits: ['Relaxamento', 'Sono', 'Estresse'], popularity: 8
+    },
+    {
+      id: 'colageno-001', name: 'ColÃ¡geno Hidrolisado 300g', sku: '', category: 'suplementos',
+      categoryId: '', description: 'ColÃ¡geno puro para pele, cabelo, unhas e articulaÃ§Ãµes.',
+      price: 89.90, priceOriginal: 0, imageUrl: '', slug: 'colageno-hidrolisado',
+      active: true, stock: null, weight: 0, brand: '',
+      benefits: ['Pele', 'Cabelo', 'ArticulaÃ§Ãµes'], popularity: 9
+    },
+    {
+      id: 'whey-protein-001', name: 'Whey Protein Isolado 900g', sku: '', category: 'suplementos',
+      categoryId: '', description: 'ProteÃ­na de alto valor biolÃ³gico para recuperaÃ§Ã£o muscular.',
+      price: 119.90, priceOriginal: 0, imageUrl: '', slug: 'whey-protein-isolado',
+      active: true, stock: null, weight: 0, brand: '',
+      benefits: ['ProteÃ­na', 'RecuperaÃ§Ã£o', 'MÃºsculos'], popularity: 8
+    }
+  ];
 }
 
 module.exports = {
-  PRODUCTS,
+  initializeProducts,
   searchProducts,
   getProductDetails,
   getCategories,
   getProductsByCategory,
   getTopProducts,
-  formatProduct
+  checkStock,
+  getProductPhotoUrl,
+  formatProduct,
+  getCheckoutUrl,
+  getFallbackProducts,
+  // Expose for agent
+  PRODUCTS: productCache,
+  getProductCache: () => productCache
 };
