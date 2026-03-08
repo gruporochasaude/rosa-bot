@@ -395,7 +395,7 @@ async function processMessage(userId, userMessage) {
                   .join('\n');
               } else {
                 functionResult = 'Categorias: ChÃ¡s, Suplementos, EmpÃ³rio (produtos naturais)';
-              }
+                 }
             } catch (error) {
               functionResult = 'Categorias: ChÃ¡s, Suplementos, EmpÃ³rio (produtos naturais)';
             }
