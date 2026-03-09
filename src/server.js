@@ -22,6 +22,7 @@ const EVOLUTION_API_URL = process.env.EVOLUTION_API_URL || 'https://evolution-ap
 const EVOLUTION_API_KEY = process.env.EVOLUTION_API_KEY || 'rocha-saude-2024';
 const INSTANCE_NAME = process.env.INSTANCE_NAME || 'rocha-saude';
 const WEBHOOK_TOKEN = process.env.WEBHOOK_TOKEN || 'rosa-webhook-2024';
+const SUPPORT_GROUP_JID = process.env.SUPPORT_GROUP_JID || '';
 
 // Logging utility
 function log(level, message) {
@@ -227,6 +228,12 @@ async function handleTextMessage(message, textContent) {
     // Process message with AI
     const response = await processMessage(phoneNumber, textContent);
 
+    // Check if bot is paused for human support
+    if (response.humanPaused) {
+      log('INFO', `Bot paused for ${phoneNumber} - skipping response`);
+      return { success: true, phoneNumber, humanPaused: true };
+    }
+
     if (!response.success) {
       log('ERROR', `Failed to process message: ${response.error}`);
       // Send a fallback message
@@ -237,8 +244,14 @@ async function handleTextMessage(message, textContent) {
     // Send response via Evolution API
     await sendTextMessage(phoneNumber, response.message);
 
-    // Execute any media sends (images)
+    // Execute any media sends and handle transfers
     if (response.toolCalls && response.toolCalls.length > 0) {
+      // Handle transfer to human notifications
+      for (const call of response.toolCalls) {
+        if (call.type === 'transfer_to_human') {
+          await sendGroupNotification(call.phoneNumber, call.customerName, call.reason, call.summary);
+        }
+      }
       await executeMediaActions(phoneNumber, response.toolCalls);
     }
 
@@ -279,6 +292,47 @@ async function sendTextMessage(phoneNumber, message) {
       log('ERROR', `Evolution API response: ${JSON.stringify(error.response.data)}`);
     }
     throw error;
+  }
+}
+
+
+
+/**
+ * Send notification to WhatsApp support group
+ */
+async function sendGroupNotification(phoneNumber, customerName, reason, summary) {
+  if (!SUPPORT_GROUP_JID) {
+    log('WARN', 'SUPPORT_GROUP_JID not set - cannot send group notification');
+    return;
+  }
+
+  try {
+    const message = '\u{1F514} *Atendimento Humano Solicitado*\n\n' +
+      '\u{1F464} Cliente: ' + customerName + '\n' +
+      '\u{1F4F1} Telefone: ' + phoneNumber + '\n' +
+      '\u{1F4DD} Motivo: ' + reason + '\n' +
+      '\u{1F4AC} Resumo: ' + summary + '\n\n' +
+      '\u{23F0} Bot pausado por 30 min.\n' +
+      'Para retomar o bot manualmente: POST /resume-bot/' + phoneNumber;
+
+    await axios.post(
+      `${EVOLUTION_API_URL}/message/sendText/${INSTANCE_NAME}`,
+      {
+        number: SUPPORT_GROUP_JID,
+        text: message
+      },
+      {
+        headers: {
+          'apikey': EVOLUTION_API_KEY,
+          'Content-Type': 'application/json'
+        },
+        timeout: 10000
+      }
+    );
+
+    log('INFO', `Group notification sent for ${phoneNumber}`);
+  } catch (error) {
+    log('ERROR', `Failed to send group notification: ${error.message}`);
   }
 }
 
@@ -327,6 +381,67 @@ app.post('/test/start-conversation', async (req, res) => {
     });
   } catch (error) {
     res.status(500).json({ error: error.message });
+  }
+});
+
+
+/**
+ * Resume bot for a specific phone number (after human support)
+ */
+app.post('/resume-bot/:phoneNumber', (req, res) => {
+  try {
+    const { phoneNumber } = req.params;
+    const session = getSession(phoneNumber);
+    
+    if (!session.isHumanPaused()) {
+      return res.status(200).json({ success: true, message: 'Bot already active for this number' });
+    }
+    
+    session.resumeBot();
+    log('INFO', `Bot manually resumed for ${phoneNumber}`);
+    
+    res.status(200).json({ 
+      success: true, 
+      message: `Bot resumed for ${phoneNumber}` 
+    });
+  } catch (error) {
+    res.status(500).json({ error: error.message });
+  }
+});
+
+/**
+ * Setup endpoint - Create WhatsApp support group
+ */
+app.post('/setup/create-support-group', async (req, res) => {
+  try {
+    const { participants } = req.body;
+    
+    const response = await axios.post(
+      `${EVOLUTION_API_URL}/group/create/${INSTANCE_NAME}`,
+      {
+        subject: 'Suporte Rosa Bot - Grupo Rocha',
+        description: 'Grupo para receber notificacoes de clientes que pedem atendimento humano via WhatsApp Bot Rosa.',
+        participants: participants || []
+      },
+      {
+        headers: {
+          'apikey': EVOLUTION_API_KEY,
+          'Content-Type': 'application/json'
+        },
+        timeout: 15000
+      }
+    );
+    
+    log('INFO', `Support group created: ${JSON.stringify(response.data)}`);
+    
+    res.status(200).json({ 
+      success: true, 
+      message: 'Support group created! Set the group JID as SUPPORT_GROUP_JID env var on Railway.',
+      data: response.data
+    });
+  } catch (error) {
+    log('ERROR', `Failed to create support group: ${error.message}`);
+    res.status(500).json({ error: error.message, details: error.response?.data });
   }
 });
 
