@@ -44,6 +44,8 @@ Calorosa, entusiasmada e genuinamente interessada em ajudar. Experiente em saÃ�
 
 *Sobre a loja:*
 Site: www.gruporochasaude.com
+Email de contato: contato@gruporochasaude.com
+Sempre que precisar direcionar o cliente para atendimento humano, use o email contato@gruporochasaude.com (NUNCA use atendimento@ ou outro email).
 7 anos de mercado com marca prÃ³pria de chÃ¡s naturais (Detox, Relaxante, Emagrecedor, Digestivo, Imunidade). Suplementos de qualidade (Whey, ColÃ¡geno, Vitaminas, Ãmega-3). EmpÃ³rio com produtos premium (castanhas, farinhas, mel, Ã³leo de coco). Todos os produtos com fotos e preÃ§os reais do catÃ¡logo.
 
 *REGRAS DE FORMATAÃÃO PARA WHATSAPP (OBRIGATÃRIO):*
@@ -304,18 +306,31 @@ async function processMessage(userId, userMessage) {
             try {
               const order = await getWbuyOrderStatus(functionArgs.order_id);
               if (order) {
-                const status = order.status || order.situacao || 'Desconhecido';
-                const date = order.date || order.data || '';
-                functionResult = `ð¦ Pedido #${functionArgs.order_id}\nStatus: ${status}`;
-                if (date) functionResult += `\nData: ${date}`;
-                if (order.tracking || order.rastreio) {
-                  functionResult += `\nRastreio: ${order.tracking || order.rastreio}`;
+                // Safety: ensure status is always a string
+                let status = order.status;
+                if (typeof status === 'object' && status !== null) {
+                  status = status.nome || status.descricao || JSON.stringify(status);
+                }
+                status = status || 'Desconhecido';
+
+                functionResult = `\u{1F4E6} Pedido #${functionArgs.order_id}\nStatus: ${status}`;
+                if (order.date) functionResult += `\nData: ${order.date}`;
+                if (order.total) functionResult += `\nTotal: R$ ${order.total}`;
+                if (order.payment) functionResult += `\nPagamento: ${order.payment}`;
+                if (order.itemCount > 0) {
+                  functionResult += `\nItens (${order.itemCount}):`;
+                  order.items.forEach(item => {
+                    functionResult += `\n  - ${item.name} (${item.quantity}x)`;
+                  });
+                }
+                if (order.tracking) {
+                  functionResult += `\nRastreio: ${order.tracking}`;
                 }
               } else {
-                functionResult = `Pedido #${functionArgs.order_id} nÃ£o encontrado. Verifique o nÃºmero do pedido.`;
+                functionResult = `Pedido #${functionArgs.order_id} n\u00e3o encontrado. Verifique o n\u00famero do pedido.`;
               }
             } catch (error) {
-              functionResult = 'NÃ£o foi possÃ­vel consultar o pedido no momento. Tente novamente.';
+              functionResult = 'N\u00e3o foi poss\u00edvel consultar o pedido no momento. Tente novamente.';
             }
             break;
           }
