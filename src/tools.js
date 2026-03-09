@@ -225,6 +225,27 @@ const TOOLS = [
         properties: {}
       }
     }
+  },
+  {
+    type: 'function',
+    function: {
+      name: 'transfer_to_human',
+      description: 'Transferir atendimento para um humano da equipe. Use quando: o cliente pedir explicitamente para falar com uma pessoa/atendente, quando o problema for complexo demais para resolver, quando o cliente estiver insatisfeito ou reclamando, ou quando precisar de suporte tecnico humano.',
+      parameters: {
+        type: 'object',
+        properties: {
+          reason: {
+            type: 'string',
+            description: 'Motivo da transferencia (ex: "cliente quer falar com pessoa", "reclamacao", "problema tecnico")'
+          },
+          summary: {
+            type: 'string',
+            description: 'Resumo breve da conversa ate o momento para o atendente humano entender o contexto'
+          }
+        },
+        required: ['reason', 'summary']
+      }
+    }
   }
 ];
 
