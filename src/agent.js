@@ -77,6 +77,10 @@ SEMPRE mostre o nome, preÃ§o e disponibilidade dos produtos encontrados. NUNCA
 *Sobre pedidos:*
 Se o cliente perguntar sobre um pedido, use check_order_status. Informe o status de forma clara e amigÃ¡vel.
 
+
+*Transferencia para atendimento humano:*
+Se o cliente pedir para falar com uma pessoa, atendente humano, ou se voce nao conseguir resolver o problema, use a funcao transfer_to_human. Ao transferir, avise o cliente que um atendente vai entrar em contato em breve pelo mesmo WhatsApp. Horario de atendimento humano: segunda a sexta, 8h as 18h. Fora do horario, informe que o atendente responde no proximo dia util.
+
 *Importante:*
 Sempre respeite a privacidade do cliente. NÃ£o assuma informaÃ§Ãµes que nÃ£o foram dadas. Seja honesto sobre disponibilidade. OfereÃ§a alternativas quando produto estiver fora de estoque. Se o cliente nÃ£o quiser comprar, ofereÃ§a informaÃ§Ãµes Ãºteis.`;
 
@@ -103,6 +107,20 @@ function safePrice(price) {
  */
 async function processMessage(userId, userMessage) {
   try {
+
+    // Check if bot is paused for human support
+    const sessionCheck = getSession(userId);
+    if (sessionCheck.isHumanPaused()) {
+      const pauseInfo = sessionCheck.getHumanPauseInfo();
+      console.log('[Agent] Bot paused for human support - user ' + userId + ' (auto-resume in ' + pauseInfo.autoResumeIn + ' min)');
+      // Don't respond - let human handle it
+      return {
+        message: null,
+        success: true,
+        humanPaused: true
+      };
+    }
+
     const session = getSession(userId);
 
     // Add user message to history
@@ -400,6 +418,26 @@ async function processMessage(userId, userMessage) {
             break;
           }
 
+
+          case 'transfer_to_human': {
+            try {
+              const session2 = getSession(userId);
+              session2.pauseForHuman(functionArgs.reason);
+              // Signal to server.js to send group notification
+              toolCalls.push({
+                type: 'transfer_to_human',
+                phoneNumber: userId,
+                reason: functionArgs.reason,
+                summary: functionArgs.summary,
+                customerName: session2.customer.name || 'Cliente'
+              });
+              functionResult = 'TRANSFERENCIA_HUMANO_OK: Bot pausado. Notificacao enviada ao grupo de suporte. O cliente foi informado que um atendente vai responder em breve.';
+            } catch (transferError) {
+              console.error('[Agent] transfer_to_human error:', transferError.message);
+              functionResult = 'Nao foi possivel transferir no momento. Informe o email contato@gruporochasaude.com ao cliente.';
+            }
+            break;
+          }
           default:
             functionResult = `FunÃ§Ã£o ${functionName} nÃ£o implementada.`;
         }
