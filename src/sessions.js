@@ -28,6 +28,10 @@ class Session {
     this.createdAt = Date.now();
     this.lastInteraction = Date.now();
     this.totalSpent = 0;
+    // Human support pause
+    this.humanPaused = false;
+    this.humanPausedAt = null;
+    this.humanPauseReason = '';
   }
 
   /**
@@ -118,6 +122,54 @@ class Session {
     const items = this.cart.map(item => `${item.name} (${item.quantity}x R$ ${item.price.toFixed(2)})`).join('\n');
     const total = this.getCartTotal();
     return `${items}\n\nð° Total: R$ ${total.toFixed(2)}`;
+  }
+
+
+  /**
+   * Pause bot for human support (30 min timeout)
+   */
+  pauseForHuman(reason) {
+    this.humanPaused = true;
+    this.humanPausedAt = Date.now();
+    this.humanPauseReason = reason || 'Cliente solicitou atendimento humano';
+    console.log('[Sessions] Bot paused for human support: ' + this.userId + ' - ' + reason);
+  }
+
+  /**
+   * Resume bot after human support
+   */
+  resumeBot() {
+    this.humanPaused = false;
+    this.humanPausedAt = null;
+    this.humanPauseReason = '';
+    console.log('[Sessions] Bot resumed for: ' + this.userId);
+  }
+
+  /**
+   * Check if bot is paused for human support (auto-resume after 30 min)
+   */
+  isHumanPaused() {
+    if (!this.humanPaused) return false;
+    // Auto-resume after 30 minutes
+    const PAUSE_TIMEOUT = 30 * 60 * 1000;
+    if (Date.now() - this.humanPausedAt > PAUSE_TIMEOUT) {
+      this.resumeBot();
+      return false;
+    }
+    return true;
+  }
+
+  /**
+   * Get human pause info
+   */
+  getHumanPauseInfo() {
+    if (!this.humanPaused) return null;
+    const elapsed = Math.floor((Date.now() - this.humanPausedAt) / 1000 / 60);
+    return {
+      reason: this.humanPauseReason,
+      pausedMinutesAgo: elapsed,
+      autoResumeIn: 30 - elapsed
+    };
   }
 
   /**
