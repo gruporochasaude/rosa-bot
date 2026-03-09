@@ -272,17 +272,45 @@ async function getOrder(orderId) {
 
 /**
  * Get order status
+ * Handles Wbuy API returning situacao as object {id, nome} or string
  */
 async function getOrderStatus(orderId) {
   const response = await getOrder(orderId);
   const data = extractData(response);
   if (data.length > 0) {
+    const order = data[0];
+
+    // Extract status - Wbuy may return situacao as object {id, nome} or string
+    const rawStatus = order.situacao || order.status;
+    let status;
+    if (typeof rawStatus === 'object' && rawStatus !== null) {
+      status = rawStatus.nome || rawStatus.descricao || rawStatus.name || JSON.stringify(rawStatus);
+    } else {
+      status = rawStatus || 'Desconhecido';
+    }
+
+    // Extract payment - may also be object
+    const rawPayment = order.pagamento || order.forma_pagamento || '';
+    const payment = typeof rawPayment === 'object' && rawPayment !== null
+      ? (rawPayment.nome || rawPayment.descricao || '')
+      : rawPayment;
+
+    // Extract items
+    const items = order.itens || order.produtos || order.items || [];
+
     return {
       id: orderId,
-      status: data[0].situacao || data[0].status || 'Desconhecido',
-      date: data[0].data || data[0].cadastro || '',
-      tracking: data[0].rastreio || data[0].tracking || '',
-      total: data[0].total || data[0].valor_total || ''
+      status: status,
+      date: order.data || order.cadastro || '',
+      tracking: order.rastreio || order.tracking || '',
+      total: order.total || order.valor_total || '',
+      payment: payment,
+      items: Array.isArray(items) ? items.map(i => ({
+        name: i.produto || i.nome || i.name || 'Produto',
+        quantity: i.quantidade || i.qty || 1,
+        price: i.valor || i.preco || i.price || 0
+      })) : [],
+      itemCount: Array.isArray(items) ? items.length : 0
     };
   }
   return null;
