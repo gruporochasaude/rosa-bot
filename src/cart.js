@@ -3,17 +3,17 @@
  * Handles cart operations and checkout
  */
 
-const { getProductDetails } = require('./products');
+const { getProductDetails, getCheckoutUrl } = require('./products');
 
 /**
  * Format cart for display in WhatsApp
  */
 function formatCartForDisplay(session) {
   if (session.cart.length === 0) {
-    return '🛒 Seu carrinho está vazio\n\nQual produto você gostaria de adicionar?';
+    return 'ð Seu carrinho estÃ¡ vazio\n\nQual produto vocÃª gostaria de adicionar?';
   }
 
-  let message = '🛒 *Seu Carrinho*\n\n';
+  let message = 'ð *Seu Carrinho*\n\n';
 
   session.cart.forEach((item, index) => {
     const itemTotal = (item.price * item.quantity).toFixed(2).replace('.', ',');
@@ -52,49 +52,63 @@ function getCartStats(session) {
 }
 
 /**
- * Generate checkout URL using the store's actual domain
- * Uses www.gruporochasaude.com (NOT wbuy.com.br which returns 404)
+ * Generate checkout links using actual product page URLs
+ * Wbuy uses session-based cart (no URL-based add-to-cart),
+ * so we link directly to product pages where the customer can add to cart.
  */
-const STORE_CHECKOUT_URL = 'https://www.gruporochasaude.com';
+const STORE_URL = 'https://www.gruporochasaude.com';
 
-function generateCheckoutLink(session) {
+function generateCheckoutLinks(session) {
   if (session.cart.length === 0) {
-    return null;
+    return [];
   }
 
-  // Create product list for URL
-  const productList = session.cart
-    .map(item => `${item.id}:${item.quantity}`)
-    .join(',');
+  return session.cart.map(item => {
+    const product = getProductDetails(item.id);
+    const url = product ? getCheckoutUrl(product) : `${STORE_URL}`;
+    return {
+      name: item.name,
+      quantity: item.quantity,
+      price: item.price,
+      url
+    };
+  });
+}
 
-  const checkoutUrl = `${STORE_CHECKOUT_URL}/checkout?products=${encodeURIComponent(productList)}`;
-
-  return checkoutUrl;
+// Keep backward-compatible single link (returns first product URL or store URL)
+function generateCheckoutLink(session) {
+  const links = generateCheckoutLinks(session);
+  if (links.length === 0) return null;
+  return links[0].url;
 }
 
 /**
- * Format checkout message
+ * Format checkout message with direct product page links
  */
 function formatCheckoutMessage(session) {
   const stats = getCartStats(session);
-  const checkoutUrl = generateCheckoutLink(session);
+  const links = generateCheckoutLinks(session);
 
-  if (!checkoutUrl) {
-    return '❌ Seu carrinho está vazio. Adicione produtos antes de finalizar a compra.';
+  if (links.length === 0) {
+    return 'â Seu carrinho estÃ¡ vazio. Adicione produtos antes de finalizar a compra.';
   }
 
-  let message = '✅ *Pronto para finalizar!*\n\n';
-  message += `📦 ${stats.itemCount} tipo(s) de produto\n`;
-  message += `📊 ${stats.totalQuantity} unidade(s) no total\n`;
-  message += `💰 Valor total: *R$ ${stats.totalValue.toFixed(2)}*\n\n`;
+  let message = 'â *Pronto para finalizar!*\n\n';
+  message += `ð¦ ${stats.itemCount} tipo(s) de produto\n`;
+  message += `ð ${stats.totalQuantity} unidade(s) no total\n`;
+  message += `ð° Valor total: *R$ ${stats.totalValue.toFixed(2).replace('.', ',')}*\n\n`;
 
   if (session.customer.name) {
-    message += `👤 Comprador: ${session.customer.name}\n`;
+    message += `ð¤ Comprador: ${session.customer.name}\n`;
   }
 
-  message += `\n🔗 *Link para finalizar compra:*\n`;
-  message += `${checkoutUrl}\n\n`;
-  message += `Clique no link acima para pagar de forma segura no Wbuy!`;
+  message += `\nð *Link(s) para compra:*\n`;
+  links.forEach((item, i) => {
+    const qty = item.quantity > 1 ? ` (${item.quantity}x)` : '';
+    message += `${i + 1}. *${item.name}*${qty}\n${item.url}\n\n`;
+  });
+
+  message += `Clique no link do produto, escolha a quantidade e finalize sua compra!`;
 
   return message;
 }
@@ -120,7 +134,7 @@ function validateCart(session) {
     return {
       valid: validItems.length > 0,
       removedItems: invalidItems,
-      message: `⚠️ ${invalidItems.length} produto(s) saíram de estoque e foram removidos do carrinho.`
+      message: `â ï¸ ${invalidItems.length} produto(s) saÃ­ram de estoque e foram removidos do carrinho.`
     };
   }
 
@@ -146,7 +160,7 @@ function applyDiscount(session, discountCode) {
   if (!discountPercent) {
     return {
       success: false,
-      message: '❌ Código de desconto inválido',
+      message: 'â CÃ³digo de desconto invÃ¡lido',
       discount: 0
     };
   }
@@ -156,7 +170,7 @@ function applyDiscount(session, discountCode) {
 
   return {
     success: true,
-    message: `✅ Desconto de ${(discountPercent * 100).toFixed(0)}% aplicado! Você economiza R$ ${discountAmount.toFixed(2)}`,
+    message: `â Desconto de ${(discountPercent * 100).toFixed(0)}% aplicado! VocÃª economiza R$ ${discountAmount.toFixed(2)}`,
     discount: discountAmount,
     originalTotal: currentTotal,
     newTotal: currentTotal - discountAmount
@@ -189,6 +203,7 @@ module.exports = {
   formatProductForQuickAdd,
   getCartStats,
   generateCheckoutLink,
+  generateCheckoutLinks,
   formatCheckoutMessage,
   validateCart,
   applyDiscount,
