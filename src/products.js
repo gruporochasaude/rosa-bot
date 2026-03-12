@@ -1,9 +1,6 @@
 /**
  * Product Catalog for Rosa 2.0
  * Fetches products from Wbuy API with intelligent caching
-/**
- * Product Catalog for Rosa 2.0
- * Fetches products from Wbuy API with intelligent caching
  * Falls back to local cache if API is unavailable
  *
  * Wbuy API field mapping (discovered from live API):
