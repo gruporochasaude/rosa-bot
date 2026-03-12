@@ -204,65 +204,40 @@ async function processMessage(userId, userMessage) {
         // Execute function based on name (all async now)
         switch (functionName) {
           case 'search_products': {
-              try {
-                const results = await searchProducts(functionArgs.query, functionArgs.category);
-                console.log(`[Agent] search_products("${functionArgs.query}") returned ${results.length} results`);
-                
-                // Filter out sachê de chá products (out of stock) to avoid AI confusion
-                const sachetTeaFiltered = [];
-                const filteredResults = results.filter(p => {
-                  const nameLC = (p.name || '').toLowerCase();
-                  const catLC = (p.category || '').toLowerCase();
-                  const isSachet = nameLC.includes('sach') || catLC.includes('sach');
-                  const isTea = nameLC.includes('chá') || catLC.includes('chá') || catLC.includes('infus');
-                  if (isSachet && isTea && (p.stock === 0 || p.stock === null)) {
-                    sachetTeaFiltered.push(p.name);
-                    return false;
+          try {
+            const results = await searchProducts(functionArgs.query, functionArgs.category);
+            console.log('[Agent] search_products("' + functionArgs.query + '") returned ' + results.length + ' results');
+            
+            if (results.length === 0) {
+              functionResult = 'Nenhum produto encontrado. Tente outro termo de busca mais curto ou generico.';
+            } else {
+              functionResult = 'PRODUTOS ENCONTRADOS - MOSTRE TODOS COM ESTOQUE AO CLIENTE:\n';
+              functionResult += results
+                .slice(0, 10)
+                .map(p => {
+                  let line = '- [ID: ' + p.id + '] ' + p.name;
+                  if (p.category) line += ' (' + p.category + ')';
+                  const price = safePrice(p.price);
+                  if (price) {
+                    line += ': R$ ' + price;
                   }
-                  return true;
-                });
-                
-                if (sachetTeaFiltered.length > 0) {
-                  console.log(`[Agent] Filtered out ${sachetTeaFiltered.length} sachê tea products (out of stock)`);
-                }
-                
-                if (filteredResults.length === 0) {
-                  if (sachetTeaFiltered.length > 0) {
-                    functionResult = 'Os produtos encontrados são sachês de chá que estão sem estoque. Transfira o cliente para atendimento humano usando transfer_to_human.';
-                  } else {
-                    functionResult = 'Nenhum produto encontrado. Tente outro termo de busca mais curto ou genérico.';
+                  if (p.stock !== null && p.stock !== undefined) {
+                    line += p.stock > 0 ? ' [EM ESTOQUE: ' + p.stock + ' unidades]' : ' [FORA DE ESTOQUE]';
                   }
-                } else {
-                  functionResult = 'PRODUTOS ENCONTRADOS - MOSTRE TODOS COM ESTOQUE AO CLIENTE:\n';
-                  functionResult += filteredResults
-                    .slice(0, 10)
-                    .map(p => {
-                      let line = `- [ID: ${p.id}] ${p.name}`;
-                      if (p.category) line += ` (${p.category})`;
-                      const price = safePrice(p.price);
-                      if (price) {
-                        line += `: R$ ${price}`;
-                      }
-                      if (p.stock !== null && p.stock !== undefined) {
-                        line += p.stock > 0 ? ` [EM ESTOQUE: ${p.stock} unidades]` : ' [FORA DE ESTOQUE]';
-                      }
-                      return line;
-                    })
-                    .join('\n');
-                  functionResult += `\n\nTotal encontrado: ${filteredResults.length} produto(s)`;
-                  if (sachetTeaFiltered.length > 0) {
-                    functionResult += `\nNota: ${sachetTeaFiltered.length} versão(ões) em sachê de chá foram omitidas (sem estoque).`;
-                  }
-                  functionResult += '\nIMPORTANTE: Apresente TODOS os produtos acima que têm estoque ao cliente. Se houver múltiplas versões do mesmo produto (pó, granel, cápsulas, etc), mostre CADA UMA delas separadamente!';
-                }
-              } catch (searchError) {
-                console.error(`[Agent] search_products error:`, searchError.message);
-                functionResult = 'Erro ao buscar produtos. Tente novamente.';
-              }
-              break;
+                  return line;
+                })
+                .join('\n');
+              functionResult += '\n\nTotal encontrado: ' + results.length + ' produto(s)';
+              functionResult += '\nIMPORTANTE: Apresente TODOS os produtos acima que tem estoque ao cliente. Se houver multiplas versoes do mesmo produto (po, granel, capsulas, etc), mostre CADA UMA delas separadamente! NAO mencione produtos fora de estoque a menos que o cliente pergunte especificamente.';
             }
+          } catch (searchError) {
+            console.error('[Agent] search_products error:', searchError.message);
+            functionResult = 'Erro ao buscar produtos. Tente novamente.';
+          }
+          break;
+        }
 
-          case 'get_product_details': {
+        case 'get_product_details': {
             try {
               // Convert ID to string for consistent comparison
               const productId = String(functionArgs.product_id);
