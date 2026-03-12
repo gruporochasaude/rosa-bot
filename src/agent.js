@@ -201,41 +201,63 @@ async function processMessage(userId, userMessage) {
         // Execute function based on name (all async now)
         switch (functionName) {
           case 'search_products': {
-            try {
-              const results = await searchProducts(functionArgs.query, functionArgs.category);
-              console.log(`[Agent] search_products("${functionArgs.query}") returned ${results.length} results`);
-
-              if (results.length === 0) {
-                functionResult = 'Nenhum produto encontrado. Tente outro termo de busca.';
-              } else {
-                functionResult = results
-                  .slice(0, 5)
-                  .map(p => {
-                    let line = `- [ID: ${p.id}] ${p.name}`;
-                    if (p.category) line += ` (${p.category})`;
-                    const price = safePrice(p.price);
-                    if (price) {
-                      line += `: R$ ${price}`;
-                    }
-                    if (p.stock !== null && p.stock !== undefined) {
-                      line += p.stock > 0 ? ` [Em estoque: ${p.stock}]` : ' [FORA DE ESTOQUE]';
-                    }
-                    return line;
-                  })
-                  .join('\n');
-
-                functionResult += `\n\nTotal encontrado: ${results.length} produto(s)`;
-                // Log first result for debugging
-                if (results[0]) {
-                  console.log(`[Agent] First result sample: id=${results[0].id}, name=${results[0].name}, price=${results[0].price}, stock=${results[0].stock}`);
+              try {
+                const results = await searchProducts(functionArgs.query, functionArgs.category);
+                console.log(`[Agent] search_products("${functionArgs.query}") returned ${results.length} results`);
+                
+                // Filter out sachê de chá products (out of stock) to avoid AI confusion
+                const sachetTeaFiltered = [];
+                const filteredResults = results.filter(p => {
+                  const nameLC = (p.name || '').toLowerCase();
+                  const catLC = (p.category || '').toLowerCase();
+                  const isSachet = nameLC.includes('sach') || catLC.includes('sach');
+                  const isTea = nameLC.includes('chá') || catLC.includes('chá') || catLC.includes('infus');
+                  if (isSachet && isTea && (p.stock === 0 || p.stock === null)) {
+                    sachetTeaFiltered.push(p.name);
+                    return false;
+                  }
+                  return true;
+                });
+                
+                if (sachetTeaFiltered.length > 0) {
+                  console.log(`[Agent] Filtered out ${sachetTeaFiltered.length} sachê tea products (out of stock)`);
                 }
+                
+                if (filteredResults.length === 0) {
+                  if (sachetTeaFiltered.length > 0) {
+                    functionResult = 'Os produtos encontrados são sachês de chá que estão sem estoque. Transfira o cliente para atendimento humano usando transfer_to_human.';
+                  } else {
+                    functionResult = 'Nenhum produto encontrado. Tente outro termo de busca mais curto ou genérico.';
+                  }
+                } else {
+                  functionResult = 'PRODUTOS ENCONTRADOS (ofereça os que têm estoque):\n';
+                  functionResult += filteredResults
+                    .slice(0, 5)
+                    .map(p => {
+                      let line = `- [ID: ${p.id}] ${p.name}`;
+                      if (p.category) line += ` (${p.category})`;
+                      const price = safePrice(p.price);
+                      if (price) {
+                        line += `: R$ ${price}`;
+                      }
+                      if (p.stock !== null && p.stock !== undefined) {
+                        line += p.stock > 0 ? ` [EM ESTOQUE: ${p.stock} unidades]` : ' [FORA DE ESTOQUE]';
+                      }
+                      return line;
+                    })
+                    .join('\n');
+                  functionResult += `\n\nTotal encontrado: ${filteredResults.length} produto(s)`;
+                  if (sachetTeaFiltered.length > 0) {
+                    functionResult += `\nNota: ${sachetTeaFiltered.length} versão(ões) em sachê de chá foram omitidas (sem estoque).`;
+                  }
+                  functionResult += '\nIMPORTANTE: Ofereça ao cliente os produtos que têm estoque disponível!';
+                }
+              } catch (searchError) {
+                console.error(`[Agent] search_products error:`, searchError.message);
+                functionResult = 'Erro ao buscar produtos. Tente novamente.';
               }
-            } catch (searchError) {
-              console.error(`[Agent] search_products error:`, searchError.message);
-              functionResult = 'Erro ao buscar produtos. Tente novamente.';
+              break;
             }
-            break;
-          }
 
           case 'get_product_details': {
             try {
