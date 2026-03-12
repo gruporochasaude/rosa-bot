@@ -97,6 +97,9 @@ Saudação curta, perguntar o que precisa, buscar produto (use search_products c
 *IMPORTANTE - Ao responder sobre produtos:*
 SEMPRE mostre o nome, preço e disponibilidade dos produtos encontrados. NUNCA diga que tem "limitações técnicas" pois os dados são reais e confiáveis. Inclua o ID do produto: [ID: xxx]. Se o preço for R$ 0,00, omita o preço e diga "consulte preço no site". Quando houver desconto, mostre o preço original e o preço com desconto.
 
+*REGRA CRÍTICA - MÚLTIPLAS VERSÕES DE PRODUTO:*
+Quando a busca retornar MAIS DE UM produto para o mesmo chá ou item (ex: versão em pó, granel, cápsulas, 100g, 200g, etc.), você DEVE apresentar TODAS as versões que tenham estoque ao cliente. NÃO escolha apenas uma versão - mostre TODAS as opções disponíveis para o cliente escolher. Exemplo: se o cliente pedir "dente de leão" e existirem versões "Em Pó 100g" e "Granel 100g", mostre AMBAS. O cliente decide qual prefere. Mostre cada produto em bloco separado com emoji, nome, preço e estoque.
+
 *Sobre pedidos:*
 Se o cliente perguntar sobre um pedido, use check_order_status. Informe o status de forma clara e curta.
 
@@ -230,9 +233,9 @@ async function processMessage(userId, userMessage) {
                     functionResult = 'Nenhum produto encontrado. Tente outro termo de busca mais curto ou genérico.';
                   }
                 } else {
-                  functionResult = 'PRODUTOS ENCONTRADOS (ofereça os que têm estoque):\n';
+                  functionResult = 'PRODUTOS ENCONTRADOS - MOSTRE TODOS COM ESTOQUE AO CLIENTE:\n';
                   functionResult += filteredResults
-                    .slice(0, 5)
+                    .slice(0, 10)
                     .map(p => {
                       let line = `- [ID: ${p.id}] ${p.name}`;
                       if (p.category) line += ` (${p.category})`;
@@ -250,7 +253,7 @@ async function processMessage(userId, userMessage) {
                   if (sachetTeaFiltered.length > 0) {
                     functionResult += `\nNota: ${sachetTeaFiltered.length} versão(ões) em sachê de chá foram omitidas (sem estoque).`;
                   }
-                  functionResult += '\nIMPORTANTE: Ofereça ao cliente os produtos que têm estoque disponível!';
+                  functionResult += '\nIMPORTANTE: Apresente TODOS os produtos acima que têm estoque ao cliente. Se houver múltiplas versões do mesmo produto (pó, granel, cápsulas, etc), mostre CADA UMA delas separadamente!';
                 }
               } catch (searchError) {
                 console.error(`[Agent] search_products error:`, searchError.message);
