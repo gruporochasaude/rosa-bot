@@ -24,14 +24,14 @@ const { captureLead } = require('./leads');
 
 // Initialize DeepSeek client (OpenAI-compatible)
 const client = new OpenAI({
-  apiKey: process.env.DEEPSEEK_API_KEY || 'sk-6c911742916c4f54a449fa7da1eb8c88',
-  baseURL: 'https://api.deepseek.com',
+  apiKey: process.env.GEMINI_API_KEY,
+  baseURL: 'https://generativelanguage.googleapis.com/v1beta/openai/',
   defaultHeaders: {
     'user-agent': 'Rosa-WhatsApp-Bot/2.0'
   }
 });
 
-const MODEL = 'deepseek-chat';
+const MODEL = 'gemini-2.5-flash';
 const MAX_TOKENS = 1500;
 
 /**
