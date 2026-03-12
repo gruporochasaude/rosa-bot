@@ -46,17 +46,20 @@ async function initializeProducts() {
     const result = await wbuy.getProducts(1, 100);
     let products = extractData(result);
 
-    // Fetch additional pages if we got a full page
+    // Fetch ALL pages until no more products (pagination fix)
     if (products.length >= 100) {
-      for (let p = 2; p <= 10; p++) {
+      let page = 2;
+          while (true) {
         try {
-          const nextPage = await wbuy.getProducts(p, 100);
+          const nextPage = await wbuy.getProducts(page, 100);
           const items = extractData(nextPage);
           if (items.length === 0) break;
           products = products.concat(items);
-          if (items.length < 100) break;
+              console.log(`[Products] Page ${page}: +${items.length} products (total: ${products.length})`);
+          if (items.length < 100) break; // Last page
+              page++;
         } catch (err) {
-          console.error(`[Products] Error fetching page ${p}:`, err.message);
+          console.error(`[Products] Error fetching page ${page}:`, err.message);
           break;
         }
       }
