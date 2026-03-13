@@ -9,17 +9,17 @@ const TOOLS = [
     type: 'function',
     function: {
       name: 'search_products',
-      description: 'Buscar produtos no catálogo por termo ou categoria. Use para encontrar o que o cliente procura.',
+      description: 'Buscar produtos no catálogo por termo ou categoria. Use para encontrar o que o cliente procura. Para restrições alimentares específicas (sem glúten, zero açúcar, etc), prefira filter_products_by_dietary_need.',
       parameters: {
         type: 'object',
         properties: {
           query: {
             type: 'string',
-            description: 'Termo de busca (ex: "chá", "proteína", "colágeno", "castanha")'
+            description: 'Termo de busca (ex: "chá camomila", "whey", "colágeno", "castanha", "farinha amêndoas")'
           },
           category: {
             type: 'string',
-            description: 'Categoria para filtrar (ex: "chás", "suplementos", "empório")'
+            description: 'Categoria para filtrar (ex: "Infusões", "Suplementos", "Mercearia", "Produtos Naturais")'
           }
         },
         required: ['query']
@@ -219,13 +219,13 @@ const TOOLS = [
     type: 'function',
     function: {
       name: 'get_recommendations',
-      description: 'Obter recomendações personalizadas baseado no perfil do cliente ou restrição alimentar (ex: "sem glúten", "vegano", "diabético", "intolerante a lactose")',
+      description: 'Obter recomendações personalizadas baseado no perfil do cliente ou objetivo de saúde (ex: "emagrecimento", "imunidade", "energia", "digestão", "sono")',
       parameters: {
         type: 'object',
         properties: {
           customer_profile: {
             type: 'string',
-            description: 'Perfil/necessidade do cliente (ex: "emagrecimento", "imunidade", "sem glúten", "vegano", "diabético", "digestão")'
+            description: 'Perfil/necessidade/objetivo do cliente (ex: "emagrecimento", "imunidade", "energia", "digestão", "sono", "pele e cabelo")'
           }
         },
         required: ['customer_profile']
@@ -235,8 +235,36 @@ const TOOLS = [
   {
     type: 'function',
     function: {
+      name: 'filter_products_by_dietary_need',
+      description: 'Filtrar produtos por restrição alimentar ou necessidade dietética específica. Use quando o cliente mencionar qualquer restrição alimentar como: zero açúcar, sem glúten, sem lactose, vegano, low carb, diabético, proteico, integral, orgânico. Também funciona para necessidades como emagrecimento, imunidade, energia, digestão.',
+      parameters: {
+        type: 'object',
+        properties: {
+          dietary_need: {
+            type: 'string',
+            description: 'Restrição ou necessidade dietética (ex: "zero_acucar", "sem_gluten", "sem_lactose", "vegano", "low_carb", "diabetico", "proteico", "integral", "organico", "emagrecimento", "imunidade", "energia", "digestao")'
+          }
+        },
+        required: ['dietary_need']
+      }
+    }
+  },
+  {
+    type: 'function',
+    function: {
+      name: 'get_available_dietary_filters',
+      description: 'Listar todos os filtros dietéticos disponíveis na loja (zero açúcar, sem glúten, sem lactose, vegano, low carb, etc). Use quando o cliente perguntar quais restrições alimentares a loja atende ou quiser ver as opções de filtro.',
+      parameters: {
+        type: 'object',
+        properties: {}
+      }
+    }
+  },
+  {
+    type: 'function',
+    function: {
       name: 'get_categories',
-      description: 'Listar todas as categorias de produtos disponíveis na loja',
+      description: 'Listar todas as categorias de produtos disponíveis na loja (Chás, Suplementos, Empório, etc)',
       parameters: {
         type: 'object',
         properties: {}
