@@ -326,32 +326,73 @@ async function ensureFreshCache() {
 }
 
 /**
+ * Normalize text for search: remove accents, lowercase, strip HTML tags
+ * "Chá de Dente de Leão" -> "cha de dente de leao"
+ * "açaí" -> "acai", "maçã" -> "maca"
+ */
+function normalizeForSearch(text) {
+  if (!text) return '';
+  return String(text)
+    .normalize('NFD')                    // decompose accents
+    .replace(/[\u0300-\u036f]/g, '')     // remove diacritical marks
+    .replace(/<[^>]*>/g, ' ')            // strip HTML tags
+    .replace(/&[^;]+;/g, ' ')           // strip HTML entities
+    .toLowerCase()
+    .replace(/[^a-z0-9\s]/g, ' ')       // keep only alphanumeric + spaces
+    .replace(/\s+/g, ' ')               // collapse whitespace
+    .trim();
+}
+
+/**
  * Search products by query and optional category
+ * Uses accent-normalized matching for Brazilian Portuguese
  */
 async function searchProducts(query, category = null) {
   await ensureFreshCache();
   let results = [...productCache];
 
   if (category) {
-    const cat = category.toLowerCase();
+    const catNorm = normalizeForSearch(category);
     results = results.filter(p =>
-      p.category.toLowerCase().includes(cat) ||
+      normalizeForSearch(p.category).includes(catNorm) ||
       p.categoryId.toString() === category
     );
   }
 
   if (query && query.trim()) {
-    const q = query.toLowerCase();
-    const terms = q.split(/\s+/);
+    const qNorm = normalizeForSearch(query);
+    // Filter out very short common words that add noise (Portuguese stop words)
+    const stopWords = ['de', 'do', 'da', 'dos', 'das', 'em', 'no', 'na', 'nos', 'nas', 'um', 'uma', 'o', 'a', 'os', 'as', 'e', 'ou', 'com', 'por', 'para'];
+    const terms = qNorm.split(/\s+/).filter(t => t.length > 0);
+    // Keep meaningful terms (non-stopwords), but if ALL terms are stopwords, keep them all
+    const meaningfulTerms = terms.filter(t => !stopWords.includes(t));
+    const searchTerms = meaningfulTerms.length > 0 ? meaningfulTerms : terms;
+
     results = results.filter(p => {
-      const searchText = `${p.name} ${p.description} ${p.category} ${p.brand} ${p.sku} ${p.benefits.join(' ')}`.toLowerCase();
-      return terms.every(term => searchText.includes(term));
+      const searchText = normalizeForSearch(
+        `${p.name} ${p.description} ${p.category} ${p.brand} ${p.sku} ${(p.benefits || []).join(' ')}`
+      );
+      return searchTerms.every(term => searchText.includes(term));
     });
+
+    // If no results with ALL terms, try with ANY term (partial match fallback)
+    if (results.length === 0 && searchTerms.length > 1) {
+      results = [...productCache].filter(p => {
+        const searchText = normalizeForSearch(
+          `${p.name} ${p.description} ${p.category} ${p.brand} ${p.sku} ${(p.benefits || []).join(' ')}`
+        );
+        // At least half the meaningful terms must match
+        const matchCount = searchTerms.filter(term => searchText.includes(term)).length;
+        return matchCount >= Math.ceil(searchTerms.length / 2);
+      });
+    }
   }
 
+  // Sort: name matches first, then in-stock, then by popularity
+  const qNormSort = query ? normalizeForSearch(query) : '';
   results.sort((a, b) => {
-    const aNameMatch = query ? a.name.toLowerCase().includes(query.toLowerCase()) : false;
-    const bNameMatch = query ? b.name.toLowerCase().includes(query.toLowerCase()) : false;
+    const aNameMatch = qNormSort ? normalizeForSearch(a.name).includes(qNormSort) : false;
+    const bNameMatch = qNormSort ? normalizeForSearch(b.name).includes(qNormSort) : false;
     if (aNameMatch && !bNameMatch) return -1;
     if (!aNameMatch && bNameMatch) return 1;
     if (a.stock !== null && b.stock !== null) {
