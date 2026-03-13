@@ -65,8 +65,9 @@ IMPORTANTE: NUNCA dê conselhos médicos ou nutricionais específicos. Apenas in
 *Sobre a loja:*
 Site: www.gruporochasaude.com
 Email de contato: contato@gruporochasaude.com
-Loja física: R. Caucaia, 296 - Bosque da Saúde, São Paulo - SP, 04147-100
-Horário da loja: Segunda a Sexta 09:00 às 17:00, Sábado 09:00 às 15:00
+Loja física: Av. Fagundes Filho, 141 - loja 7 - São Judas, São Paulo - SP, 04304-010 (Condomínio Edifício Denver & Austin Office Center)
+Horário da loja: Segunda a Sexta 09:00 às 19:00, Sábado 09:00 às 15:00
+Telefone da loja: (11) 98697-5204
 Horário de atendimento humano: Segunda a Sexta 09:00 às 16:00
 7 anos de mercado com marca própria de chás naturais (Detox, Relaxante, Emagrecedor, Digestivo, Imunidade).
 Suplementos de qualidade (Whey, Colágeno, Vitaminas, Ômega-3).
@@ -74,7 +75,7 @@ Empório com produtos premium (castanhas, farinhas, mel, óleo de coco).
 Todos os produtos com fotos e preços reais do catálogo.
 
 *Ponto Shopee:*
-Somos um ponto de postagem e coleta da Shopee. Sempre que alguém perguntar sobre ponto da Shopee, responda: "Sim! Somos um ponto de postagem e coleta da Shopee. Nosso horário é de segunda a sexta das 09:00 às 17:00 e sábado das 09:00 às 15:00."
+Somos um ponto de postagem e coleta da Shopee. Sempre que alguém perguntar sobre ponto da Shopee, responda: "Sim! Somos um ponto de postagem e coleta da Shopee. Nosso horário é de segunda a sexta das 09:00 às 19:00 e sábado das 09:00 às 15:00. Estamos na Av. Fagundes Filho, 141 - loja 7 - São Judas."
 
 *PROIBIÇÕES ABSOLUTAS (NUNCA FAÇA ISSO):*
 1. NUNCA diga que nossos produtos são "orgânicos". Nossos produtos são NATURAIS, não orgânicos. A palavra "orgânico" é PROIBIDA.
@@ -544,9 +545,9 @@ async function processMessage(userId, userMessage) {
           case 'get_store_info': {
             try {
               const store = getStoreInfo();
-              functionResult = `🏪 *Grupo Rocha Saúde*\n📍 ${store.endereco}\n🕐 ${store.horario}\n📞 ${store.telefone}\n📧 ${store.email}\n\n📌 Como chegar: ${store.googleMapsUrl}`;
+              functionResult = `🏪 *Rocha Saúde Empório*\n📍 ${store.endereco}\n🕐 ${store.horario}\n📞 ${store.telefone}\n📧 ${store.email}\n\n📌 Como chegar: ${store.googleMapsUrl}`;
             } catch (storeError) {
-              functionResult = '🏪 Grupo Rocha Saúde\n📍 R. Caucaia, 296 - Bosque da Saúde, São Paulo - SP, 04147-100\n🕐 Seg-Sex 09:00-17:00, Sáb 09:00-15:00';
+              functionResult = '🏪 Rocha Saúde Empório\n📍 Av. Fagundes Filho, 141 - loja 7 - São Judas, São Paulo - SP, 04304-010\n🕐 Seg-Sex 09:00-19:00, Sáb 09:00-15:00\n📞 (11) 98697-5204\n\n📌 Como chegar: https://maps.app.goo.gl/dEBhFB2U2sdsc8jdA';
             }
             break;
           }
