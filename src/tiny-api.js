@@ -291,11 +291,12 @@ function getBusinessHoursMessage() {
  */
 function getStoreInfo() {
   return {
-    name: 'Grupo Rocha Saude',
-    address: 'R. Caucaia, 296 - Bosque da Saude, Sao Paulo - SP, 04147-100',
-    phone: '(11) 97070-4868',
-    businessHours: 'Segunda a Sexta: 09:00 - 16:00',
-    googleMapsUrl: 'https://maps.google.com/?q=R.+Caucaia,+296+-+Bosque+da+Saude,+Sao+Paulo+-+SP,+04147-100',
+    name: 'Rocha Saude Emporio',
+    endereco: 'Av. Fagundes Filho, 141 - loja 7 - Sao Judas, Sao Paulo - SP, 04304-010',
+    telefone: '(11) 98697-5204',
+    email: 'contato@gruporochasaude.com',
+    horario: 'Segunda a Sexta: 09:00 - 19:00, Sabado: 09:00 - 15:00',
+    googleMapsUrl: 'https://maps.app.goo.gl/dEBhFB2U2sdsc8jdA',
     website: 'https://www.gruporochasaude.com'
   };
 }
