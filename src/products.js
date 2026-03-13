@@ -576,6 +576,169 @@ function getFallbackProducts() {
   ];
 }
 
+/**
+ * DIETARY FILTER SYSTEM
+ * Maps common dietary needs to search terms that match product descriptions
+ * Each dietary need has multiple search terms (OR logic between terms, products matching ANY qualify)
+ */
+const DIETARY_FILTERS = {
+  'zero_acucar': {
+    label: 'Zero Açúcar / Sem Açúcar',
+    searchTerms: ['zero acucar', 'sem acucar', 'sem adicao de acucar', 'sugar free', 'diet', 'zero sugar'],
+    description: 'Produtos sem adição de açúcar, adoçados naturalmente ou diet'
+  },
+  'sem_gluten': {
+    label: 'Sem Glúten',
+    searchTerms: ['sem gluten', 'gluten free', 'livre de gluten', 'sem trigo'],
+    description: 'Produtos livres de glúten, seguros para celíacos'
+  },
+  'sem_lactose': {
+    label: 'Sem Lactose',
+    searchTerms: ['sem lactose', 'lactose free', 'livre de lactose', 'vegetal', 'plant based'],
+    description: 'Produtos sem lactose ou derivados do leite'
+  },
+  'vegano': {
+    label: 'Vegano / Plant-Based',
+    searchTerms: ['vegano', 'vegan', 'plant based', 'vegetal', 'sem origem animal'],
+    description: 'Produtos 100% vegetais, sem ingredientes de origem animal'
+  },
+  'low_carb': {
+    label: 'Low Carb / Cetogênico',
+    searchTerms: ['low carb', 'lowcarb', 'cetogenico', 'keto', 'baixo carboidrato'],
+    description: 'Produtos com baixo teor de carboidratos'
+  },
+  'proteico': {
+    label: 'Rico em Proteína',
+    searchTerms: ['proteina', 'protein', 'whey', 'proteico', 'high protein'],
+    description: 'Produtos com alto teor proteico'
+  },
+  'organico': {
+    label: 'Orgânico',
+    searchTerms: ['organico', 'organic', 'selo organico'],
+    description: 'Produtos com certificação orgânica'
+  },
+  'integral': {
+    label: 'Integral',
+    searchTerms: ['integral', 'grao inteiro', 'fibra', 'rico em fibras'],
+    description: 'Produtos integrais e ricos em fibras'
+  },
+  'diabetico': {
+    label: 'Para Diabéticos',
+    searchTerms: ['zero acucar', 'sem acucar', 'diet', 'diabetico', 'baixo indice glicemico', 'adocante natural', 'stevia', 'xilitol'],
+    description: 'Produtos adequados para controle glicêmico'
+  },
+  'energia': {
+    label: 'Energia e Disposição',
+    searchTerms: ['energia', 'termogenico', 'cafeina', 'guarana', 'maca peruana', 'pre treino', 'disposicao'],
+    description: 'Produtos para energia, foco e disposição'
+  },
+  'imunidade': {
+    label: 'Imunidade',
+    searchTerms: ['imunidade', 'vitamina c', 'zinco', 'propolis', 'equinacea', 'imune'],
+    description: 'Produtos para fortalecer o sistema imunológico'
+  },
+  'emagrecimento': {
+    label: 'Emagrecimento',
+    searchTerms: ['emagrecimento', 'emagrecer', 'termogenico', 'queima gordura', 'seca barriga', 'detox', 'drenagem'],
+    description: 'Produtos auxiliares no processo de emagrecimento'
+  },
+  'digestao': {
+    label: 'Digestão e Intestino',
+    searchTerms: ['digestao', 'digestivo', 'probiotico', 'fibra', 'intestino', 'regulador', 'sene', 'boldo'],
+    description: 'Produtos para saúde digestiva e regulação intestinal'
+  }
+};
+
+/**
+ * Filter products by dietary need
+ * Uses the DIETARY_FILTERS mapping for intelligent multi-term search
+ * @param {string} dietaryNeed - Key from DIETARY_FILTERS or free text
+ * @returns {Array} Matching products sorted by relevance
+ */
+async function filterByDietaryNeeds(dietaryNeed) {
+  await ensureFreshCache();
+
+  const needNorm = normalizeForSearch(dietaryNeed);
+
+  // Try to match a known filter key
+  let filter = DIETARY_FILTERS[needNorm.replace(/\s+/g, '_')];
+
+  // If no exact key match, search through labels and terms
+  if (!filter) {
+    for (const [key, f] of Object.entries(DIETARY_FILTERS)) {
+      const labelNorm = normalizeForSearch(f.label);
+      if (labelNorm.includes(needNorm) || needNorm.includes(labelNorm)) {
+        filter = f;
+        break;
+      }
+      // Check if any search term matches
+      if (f.searchTerms.some(t => needNorm.includes(t) || t.includes(needNorm))) {
+        filter = f;
+        break;
+      }
+    }
+  }
+
+  let searchTerms;
+  let filterLabel;
+  let filterDescription;
+
+  if (filter) {
+    searchTerms = filter.searchTerms;
+    filterLabel = filter.label;
+    filterDescription = filter.description;
+  } else {
+    // Fallback: use the raw input as search term
+    searchTerms = [needNorm];
+    filterLabel = dietaryNeed;
+    filterDescription = `Produtos relacionados a "${dietaryNeed}"`;
+  }
+
+  // Search products: match ANY of the search terms (OR logic)
+  const results = productCache.filter(p => {
+    if (!p.active) return false;
+    const searchText = normalizeForSearch(
+      `${p.name} ${p.description} ${p.category} ${p.brand} ${(p.benefits || []).join(' ')}`
+    );
+    return searchTerms.some(term => searchText.includes(normalizeForSearch(term)));
+  });
+
+  // Sort: in-stock first, then by how many terms match (more = better), then popularity
+  results.sort((a, b) => {
+    // Stock priority
+    if (a.stock > 0 && (b.stock === null || b.stock <= 0)) return -1;
+    if ((a.stock === null || a.stock <= 0) && b.stock > 0) return 1;
+
+    // Term match count (more matches = more relevant)
+    const aText = normalizeForSearch(`${a.name} ${a.description} ${a.category} ${a.brand} ${(a.benefits || []).join(' ')}`);
+    const bText = normalizeForSearch(`${b.name} ${b.description} ${b.category} ${b.brand} ${(b.benefits || []).join(' ')}`);
+    const aMatches = searchTerms.filter(t => aText.includes(normalizeForSearch(t))).length;
+    const bMatches = searchTerms.filter(t => bText.includes(normalizeForSearch(t))).length;
+    if (aMatches !== bMatches) return bMatches - aMatches;
+
+    return (b.popularity || 0) - (a.popularity || 0);
+  });
+
+  return {
+    filterLabel,
+    filterDescription,
+    totalFound: results.length,
+    products: results.slice(0, 10)
+  };
+}
+
+/**
+ * Get all available dietary filters
+ * Returns the list of pre-configured dietary categories
+ */
+function getAvailableDietaryFilters() {
+  return Object.entries(DIETARY_FILTERS).map(([key, f]) => ({
+    key,
+    label: f.label,
+    description: f.description
+  }));
+}
+
 module.exports = {
   initializeProducts,
   searchProducts,
@@ -588,6 +751,9 @@ module.exports = {
   formatProduct,
   getCheckoutUrl,
   getFallbackProducts,
+  filterByDietaryNeeds,
+  getAvailableDietaryFilters,
+  DIETARY_FILTERS,
   // Expose for agent
   PRODUCTS: productCache,
   getProductCache: () => productCache
