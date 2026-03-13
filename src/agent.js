@@ -14,7 +14,9 @@ const {
   getCategories,
   getProductPhotoUrl,
   initializeProducts,
-  getProductCache
+  getProductCache,
+  filterByDietaryNeeds,
+  getAvailableDietaryFilters
 } = require('./products');
 const { validateCoupon, getOrder, getOrderStatus: getWbuyOrderStatus } = require('./wbuy-api');
 const {
@@ -54,12 +56,18 @@ Suas respostas devem ser CURTAS e ASSERTIVAS. Máximo 3-4 linhas por mensagem. V
 *Sua personalidade:*
 Acolhedora, profissional e especialista. Tom formal mas caloroso. Você entende de nutrição, restrições alimentares e bem-estar. Usa emojis com moderação. Sempre se apresenta como Rosa, da Grupo Rocha Saúde. Quando o cliente tiver dúvida sobre dieta ou restrição alimentar, conduza com perguntas inteligentes para encontrar os melhores produtos.
 
-*Especialidades - Consultas sobre Restrições Alimentares:*
-Quando um cliente mencionar restrição alimentar (sem glúten, vegano, diabético, intolerante a lactose, low carb, etc.), faça perguntas para entender melhor e recomende produtos adequados:
-1. Pergunte qual é a restrição específica
-2. Pergunte se é para uso próprio ou para outra pessoa
-3. Busque produtos adequados no catálogo
-4. Explique brevemente por que cada produto é adequado para aquela restrição
+*CONSULTORIA INTELIGENTE DE FILTROS ALIMENTARES (DIFERENCIAL DA LOJA):*
+Trabalhamos com uma linha completa de produtos para diversas necessidades alimentares. Quando o cliente mencionar QUALQUER restrição ou necessidade dietética, use filter_products_by_dietary_need para filtrar o catálogo. Filtros disponíveis: zero açúcar, sem glúten, sem lactose, vegano, low carb, proteico, integral, orgânico, para diabéticos, energia, imunidade, emagrecimento, digestão.
+
+FLUXO CONSULTIVO (use quando detectar interesse em saúde/dieta):
+1. Pergunte qual é a restrição ou objetivo específico (ex: "Você busca produtos sem glúten, sem lactose, ou tem outra necessidade?")
+2. Use filter_products_by_dietary_need com a necessidade informada
+3. Apresente os produtos encontrados com preço e disponibilidade
+4. Se o cliente tiver MÚLTIPLAS restrições (ex: "sem glúten E sem lactose"), faça buscas separadas e cruze os resultados
+5. Ofereça sugestões complementares (ex: se comprou chá sem açúcar, sugira adoçante natural)
+
+PROATIVIDADE: Se o cliente disser algo genérico como "quero comer mais saudável" ou "estou fazendo dieta", use get_available_dietary_filters para mostrar as opções e ajude-o a escolher.
+
 IMPORTANTE: NUNCA dê conselhos médicos ou nutricionais específicos. Apenas indique produtos naturais adequados e sugira que consulte um profissional de saúde.
 
 *Sobre a loja:*
@@ -101,7 +109,7 @@ Exemplo ERRADO (NUNCA faça isso):
 – Whey Protein: R$ 129,90
 
 *Capacidades:*
-Buscar produtos reais com preços atualizados, verificar estoque em tempo real, validar cupons, consultar pedidos (Tiny ERP + Wbuy), rastrear entregas, enviar fotos, montar carrinho e gerar link de checkout, listar categorias, capturar dados para follow-up, informar endereço/horário da loja com Google Maps, classificar problemas do cliente.
+Buscar produtos reais com preços atualizados, verificar estoque em tempo real, FILTRAR por restrição alimentar (zero açúcar, sem glúten, sem lactose, vegano, low carb, etc.), validar cupons, consultar pedidos (Tiny ERP + Wbuy), rastrear entregas, enviar fotos, montar carrinho e gerar link de checkout, listar categorias e filtros dietéticos, capturar dados para follow-up, informar endereço/horário da loja com Google Maps, classificar problemas do cliente.
 
 *REGRA IMPORTANTE - BUSCA DE PRODUTOS:*
 Quando o cliente mencionar um produto, extraia as PALAVRAS-CHAVE principais do texto e busque na API. Exemplos:
@@ -538,6 +546,38 @@ async function processMessage(userId, userMessage) {
                  }
             } catch (error) {
               functionResult = 'Categorias: Chás, Suplementos, Empório (produtos naturais)';
+            }
+            break;
+          }
+
+          case 'filter_products_by_dietary_need': {
+            try {
+              const need = functionArgs.dietary_need;
+              const result = await filterByDietaryNeeds(need);
+              if (result.products.length === 0) {
+                functionResult = `Nenhum produto encontrado para "${result.filterLabel}". Tente uma busca mais genérica com search_products.`;
+              } else {
+                const productList = result.products.map(p => {
+                  const price = safePrice(p.price) || 'consulte';
+                  const stock = p.stock > 0 ? `✅ ${p.stock} un.` : (p.stock === 0 ? '❌ Esgotado' : '✅');
+                  return `[ID: ${p.id}] ${p.name} - R$ ${price} - ${stock}`;
+                }).join('\n');
+                functionResult = `🔍 *${result.filterLabel}*\n${result.filterDescription}\n\n${result.totalFound} produto(s) encontrado(s):\n\n${productList}`;
+              }
+            } catch (filterError) {
+              console.error('[Agent] Dietary filter error:', filterError.message);
+              functionResult = 'Erro ao filtrar produtos. Tente usar search_products com termos específicos.';
+            }
+            break;
+          }
+
+          case 'get_available_dietary_filters': {
+            try {
+              const filters = getAvailableDietaryFilters();
+              functionResult = '🌿 *Filtros Dietéticos Disponíveis:*\n\n' +
+                filters.map(f => `• *${f.label}* - ${f.description}`).join('\n');
+            } catch (filtersError) {
+              functionResult = 'Filtros disponíveis: Zero Açúcar, Sem Glúten, Sem Lactose, Vegano, Low Carb, Proteico, Integral, Orgânico';
             }
             break;
           }
