@@ -1,23 +1,32 @@
 /**
  * Cart Management for Rosa 2.0
  * Handles cart operations and checkout
+ *
+ * FIX: generateCheckoutLinks was calling async getProductDetails() without await,
+ * causing all checkout URLs to fallback to store homepage.
+ * Cart items already contain full product data (spread during addToCart in agent.js),
+ * so we now use item data directly instead of re-fetching.
  */
 
 const { getProductDetails, getCheckoutUrl } = require('./products');
+
+// Store domain
+const STORE_URL = 'https://www.gruporochasaude.com';
 
 /**
  * Format cart for display in WhatsApp
  */
 function formatCartForDisplay(session) {
   if (session.cart.length === 0) {
-    return 'ð Seu carrinho estÃ¡ vazio\n\nQual produto vocÃª gostaria de adicionar?';
+    return '🛒 Seu carrinho está vazio\n\nQual produto você gostaria de adicionar?';
   }
 
-  let message = 'ð *Seu Carrinho*\n\n';
+  let message = '🛒 *Seu Carrinho*\n\n';
 
   session.cart.forEach((item, index) => {
-    const itemTotal = (item.price * item.quantity).toFixed(2).replace('.', ',');
-    const unitPrice = item.price.toFixed(2).replace('.', ',');
+    const price = parseFloat(item.price) || 0;
+    const itemTotal = (price * item.quantity).toFixed(2).replace('.', ',');
+    const unitPrice = price.toFixed(2).replace('.', ',');
     message += `${index + 1}. *${item.name}*\n`;
     message += `   ${item.quantity}x R$ ${unitPrice} = R$ ${itemTotal}\n\n`;
   });
@@ -33,7 +42,8 @@ function formatCartForDisplay(session) {
  * Format product for quick add
  */
 function formatProductForQuickAdd(product) {
-  return `${product.name} - R$ ${product.price.toFixed(2)}`;
+  const price = parseFloat(product.price) || 0;
+  return `${product.name} - R$ ${price.toFixed(2)}`;
 }
 
 /**
@@ -46,30 +56,56 @@ function getCartStats(session) {
     totalValue: session.getCartTotal(),
     averagePrice: session.cart.length > 0 ? session.getCartTotal() / session.cart.length : 0,
     mostExpensiveItem: session.cart.length > 0
-      ? session.cart.reduce((max, item) => item.price > max.price ? item : max)
+      ? session.cart.reduce((max, item) => (parseFloat(item.price) || 0) > (parseFloat(max.price) || 0) ? item : max)
       : null
   };
 }
 
 /**
- * Generate checkout links using actual product page URLs
- * Wbuy uses session-based cart (no URL-based add-to-cart),
- * so we link directly to product pages where the customer can add to cart.
+ * Build checkout URL from cart item data
+ * Cart items already contain productUrl and slug from when they were added
  */
-const STORE_URL = 'https://www.gruporochasaude.com';
+function getItemCheckoutUrl(item) {
+  // 1. Use productUrl if available (full URL from Wbuy url_absolute)
+  if (item.productUrl && item.productUrl.startsWith('http')) {
+    return item.productUrl;
+  }
 
+  // 2. Construct from slug using store domain
+  if (item.slug) {
+    const cleanSlug = item.slug.replace(/^\/+|\/+$/g, '');
+    return `${STORE_URL}/${cleanSlug}/`;
+  }
+
+  // 3. Try using getCheckoutUrl from products module as fallback
+  try {
+    const url = getCheckoutUrl(item);
+    if (url && url !== STORE_URL) return url;
+  } catch (e) {
+    // ignore
+  }
+
+  // 4. Fallback to store homepage
+  return STORE_URL;
+}
+
+/**
+ * Generate checkout links using cart item data directly
+ * FIX: Previously called async getProductDetails() without await,
+ * causing URLs to always fallback to store homepage.
+ * Now uses item data directly since cart items contain full product data.
+ */
 function generateCheckoutLinks(session) {
   if (session.cart.length === 0) {
     return [];
   }
 
   return session.cart.map(item => {
-    const product = getProductDetails(item.id);
-    const url = product ? getCheckoutUrl(product) : `${STORE_URL}`;
+    const url = getItemCheckoutUrl(item);
     return {
       name: item.name,
       quantity: item.quantity,
-      price: item.price,
+      price: parseFloat(item.price) || 0,
       url
     };
   });
@@ -90,51 +126,57 @@ function formatCheckoutMessage(session) {
   const links = generateCheckoutLinks(session);
 
   if (links.length === 0) {
-    return 'â Seu carrinho estÃ¡ vazio. Adicione produtos antes de finalizar a compra.';
+    return '⚠ Seu carrinho está vazio. Adicione produtos antes de finalizar a compra.';
   }
 
-  let message = 'â *Pronto para finalizar!*\n\n';
-  message += `ð¦ ${stats.itemCount} tipo(s) de produto\n`;
-  message += `ð ${stats.totalQuantity} unidade(s) no total\n`;
-  message += `ð° Valor total: *R$ ${stats.totalValue.toFixed(2).replace('.', ',')}*\n\n`;
+  let message = '✅ *Pronto para finalizar!*\n\n';
+  message += `📦 ${stats.itemCount} tipo(s) de produto\n`;
+  message += `🔢 ${stats.totalQuantity} unidade(s) no total\n`;
+  message += `💰 Valor total: *R$ ${stats.totalValue.toFixed(2).replace('.', ',')}*\n\n`;
 
-  if (session.customer.name) {
-    message += `ð¤ Comprador: ${session.customer.name}\n`;
+  if (session.customer && session.customer.name) {
+    message += `👤 Comprador: ${session.customer.name}\n`;
   }
 
-  message += `\nð *Link(s) para compra:*\n`;
+  message += `\n🔗 *Link(s) para compra:*\n`;
   links.forEach((item, i) => {
     const qty = item.quantity > 1 ? ` (${item.quantity}x)` : '';
     message += `${i + 1}. *${item.name}*${qty}\n${item.url}\n\n`;
   });
 
-  message += `Clique no link do produto, escolha a quantidade e finalize sua compra!`;
+  message += `Clique no link do produto, escolha a quantidade e finalize sua compra no site! 🛍`;
 
   return message;
 }
 
 /**
  * Validate cart items (check if products still exist)
+ * Made async to properly await getProductDetails
  */
-function validateCart(session) {
+async function validateCart(session) {
   const invalidItems = [];
   const validItems = [];
 
-  session.cart.forEach(item => {
-    const product = getProductDetails(item.id);
-    if (!product) {
-      invalidItems.push(item.id);
-    } else {
+  for (const item of session.cart) {
+    try {
+      const product = await getProductDetails(item.id);
+      if (!product) {
+        invalidItems.push(item.id);
+      } else {
+        validItems.push(item);
+      }
+    } catch (err) {
+      // If we can't verify, keep the item (benefit of the doubt)
       validItems.push(item);
     }
-  });
+  }
 
   if (invalidItems.length > 0) {
     session.cart = validItems;
     return {
       valid: validItems.length > 0,
       removedItems: invalidItems,
-      message: `â ï¸ ${invalidItems.length} produto(s) saÃ­ram de estoque e foram removidos do carrinho.`
+      message: `⚠️ ${invalidItems.length} produto(s) saíram de estoque e foram removidos do carrinho.`
     };
   }
 
@@ -146,10 +188,9 @@ function validateCart(session) {
 }
 
 /**
- * Apply discount to cart (for future use)
+ * Apply discount to cart
  */
 function applyDiscount(session, discountCode) {
-  // Placeholder for discount logic
   const discounts = {
     'PRIMEIRACOMPRA': 0.10, // 10% off
     'FIDELIDADE': 0.05,     // 5% off
@@ -160,7 +201,7 @@ function applyDiscount(session, discountCode) {
   if (!discountPercent) {
     return {
       success: false,
-      message: 'â CÃ³digo de desconto invÃ¡lido',
+      message: '❌ Código de desconto inválido',
       discount: 0
     };
   }
@@ -170,7 +211,7 @@ function applyDiscount(session, discountCode) {
 
   return {
     success: true,
-    message: `â Desconto de ${(discountPercent * 100).toFixed(0)}% aplicado! VocÃª economiza R$ ${discountAmount.toFixed(2)}`,
+    message: `✅ Desconto de ${(discountPercent * 100).toFixed(0)}% aplicado! Você economiza R$ ${discountAmount.toFixed(2)}`,
     discount: discountAmount,
     originalTotal: currentTotal,
     newTotal: currentTotal - discountAmount
@@ -185,17 +226,23 @@ function getCartRecommendations(session) {
     return [];
   }
 
-  // Get categories already in cart
-  const cartCategories = session.cart.map(item => item.category);
+  // Use the product cache getter (avoids stale reference to empty array)
+  const { getProductCache } = require('./products');
+  const allProducts = getProductCache();
 
-  // Recommend from categories not in cart
-  const { PRODUCTS } = require('./products');
-  const recommendations = PRODUCTS.filter(
-    product => !session.cart.find(item => item.id === product.id)
+  if (!allProducts || allProducts.length === 0) {
+    return [];
+  }
+
+  // Recommend products not already in cart
+  const recommendations = allProducts.filter(
+    product => !session.cart.find(item => String(item.id) === String(product.id))
   );
 
   // Sort by popularity and return top 3
-  return recommendations.sort((a, b) => b.popularity - a.popularity).slice(0, 3);
+  return recommendations
+    .sort((a, b) => (b.popularity || 0) - (a.popularity || 0))
+    .slice(0, 3);
 }
 
 module.exports = {
