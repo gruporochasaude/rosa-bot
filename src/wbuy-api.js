@@ -271,6 +271,55 @@ async function getOrder(orderId) {
 }
 
 /**
+ * Search for an order by number - tries multiple strategies
+ * The customer may provide the Wbuy order ID, or the order number shown on the site
+ */
+async function findOrderByNumber(orderNumber) {
+  const normalizedNumber = String(orderNumber).trim();
+
+  // Strategy 1: Try direct ID lookup
+  try {
+    const response = await getOrder(normalizedNumber);
+    const data = extractData(response);
+    if (data.length > 0) {
+      const order = data[0];
+      // Verify it's actually the right order (ID match or numero match)
+      const orderId = String(order.id || '').trim();
+      const orderNumero = String(order.numero || '').trim();
+      const orderPedido = String(order.pedido || '').trim();
+      if (orderId === normalizedNumber || orderNumero === normalizedNumber || orderPedido === normalizedNumber) {
+        console.log(`[Wbuy] Order found by direct ID: ${normalizedNumber}`);
+        return order;
+      }
+    }
+  } catch (e) {
+    console.log(`[Wbuy] Direct ID lookup failed for ${normalizedNumber}: ${e.message}`);
+  }
+
+  // Strategy 2: Search recent orders (last 100) for matching numero field
+  try {
+    const recentResp = await getOrders(1, 100);
+    const recentOrders = extractData(recentResp);
+    const match = recentOrders.find(o => {
+      const oId = String(o.id || '').trim();
+      const oNumero = String(o.numero || '').trim();
+      const oPedido = String(o.pedido || '').trim();
+      const oNumeroPedido = String(o.numero_pedido || '').trim();
+      return oId === normalizedNumber || oNumero === normalizedNumber ||
+             oPedido === normalizedNumber || oNumeroPedido === normalizedNumber;
+    });
+    if (match) {
+      console.log(`[Wbuy] Order found by searching recent orders: ${normalizedNumber} -> ID ${match.id}`);
+      return match;
+    }
+  } catch (e) {
+    console.log(`[Wbuy] Recent orders search failed: ${e.message}`);
+  }
+
+  return null;
+}
+
+/**
  * Get order status
  * Handles Wbuy API returning situacao as object {id, nome} or string
  */
@@ -537,6 +586,7 @@ module.exports = {
   // Orders
   getOrders,
   getOrder,
+  findOrderByNumber,
   getOrderStatus,
   getOrderCustomer,
 
