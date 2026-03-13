@@ -418,10 +418,20 @@ async function processMessage(userId, userMessage) {
                     const displayNumber = wbuyOrder.numero || wbuyOrder.pedido || wbuyOrder.id || orderNumber;
                     functionResult = `📦 *Pedido #${displayNumber}*\nStatus: ${status}`;
 
-                    const orderDate = wbuyOrder.data || wbuyOrder.cadastro || '';
+                    const rawDate = wbuyOrder.data || wbuyOrder.cadastro || '';
+                    const orderDate = typeof rawDate === 'object' && rawDate !== null
+                      ? (rawDate.data || rawDate.created || JSON.stringify(rawDate))
+                      : rawDate;
                     if (orderDate) functionResult += `\nData: ${orderDate}`;
 
-                    const total = wbuyOrder.total || wbuyOrder.valor_total || '';
+                    const rawTotal = wbuyOrder.total || wbuyOrder.valor_total || '';
+                    let total;
+                    if (typeof rawTotal === 'object' && rawTotal !== null) {
+                      total = rawTotal.valor || rawTotal.total || rawTotal.amount ||
+                              Object.values(rawTotal).find(v => typeof v === 'number' || (typeof v === 'string' && !isNaN(v))) || '';
+                    } else {
+                      total = rawTotal;
+                    }
                     if (total) functionResult += `\nTotal: R$ ${total}`;
                     if (payment) functionResult += `\nPagamento: ${payment}`;
 
