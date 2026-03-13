@@ -119,12 +119,23 @@ async function getOrderByNumber(orderNumber) {
 
     if (results.length === 0) return null;
 
-    // Find exact match by number
+    // Find exact match by number - DO NOT fallback to results[0]
+    // The Tiny search is fuzzy and can return unrelated orders
+    const normalizedQuery = String(orderNumber).trim();
     const match = results.find(p =>
-      String(p.numero) === String(orderNumber) ||
-      String(p.numero_ecommerce) === String(orderNumber) ||
-      String(p.id) === String(orderNumber)
-    ) || results[0];
+      String(p.numero).trim() === normalizedQuery ||
+      String(p.numero_ecommerce).trim() === normalizedQuery ||
+      String(p.id).trim() === normalizedQuery
+    );
+
+    if (!match) {
+      console.log(`[Tiny] No exact match for order ${orderNumber}. Search returned ${results.length} results but none matched exactly.`);
+      // Log what was returned to help debug
+      results.slice(0, 3).forEach((r, i) => {
+        console.log(`[Tiny] Result ${i}: numero=${r.numero}, numero_ecommerce=${r.numero_ecommerce}, id=${r.id}, situacao=${r.situacao}`);
+      });
+      return null;
+    }
 
     // Get full details
     const fullOrder = await getOrderById(match.id);
