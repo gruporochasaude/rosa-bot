@@ -1,7 +1,7 @@
 /**
- * Function Definitions for DeepSeek Function Calling
+ * Function Definitions for Gemini Function Calling
  * Tools available for Rosa AI during conversation
- * Updated for Wbuy API integration
+ * Updated for Wbuy + Tiny ERP integration + Customer Service Protocol
  */
 
 const TOOLS = [
@@ -9,17 +9,17 @@ const TOOLS = [
     type: 'function',
     function: {
       name: 'search_products',
-      description: 'Buscar produtos no catÃ¡logo por termo ou categoria. Use para encontrar o que o cliente procura.',
+      description: 'Buscar produtos no catálogo por termo ou categoria. Use para encontrar o que o cliente procura.',
       parameters: {
         type: 'object',
         properties: {
           query: {
             type: 'string',
-            description: 'Termo de busca (ex: "chÃ¡", "proteÃ­na", "colÃ¡geno", "castanha")'
+            description: 'Termo de busca (ex: "chá", "proteína", "colágeno", "castanha")'
           },
           category: {
             type: 'string',
-            description: 'Categoria para filtrar (ex: "chÃ¡s", "suplementos", "empÃ³rio")'
+            description: 'Categoria para filtrar (ex: "chás", "suplementos", "empório")'
           }
         },
         required: ['query']
@@ -30,7 +30,7 @@ const TOOLS = [
     type: 'function',
     function: {
       name: 'get_product_details',
-      description: 'Obter informaÃ§Ãµes completas de um produto especÃ­fico pelo ID',
+      description: 'Obter informações completas de um produto específico pelo ID',
       parameters: {
         type: 'object',
         properties: {
@@ -47,7 +47,7 @@ const TOOLS = [
     type: 'function',
     function: {
       name: 'check_stock',
-      description: 'Verificar estoque disponÃ­vel de um produto. Use quando o cliente perguntar sobre disponibilidade.',
+      description: 'Verificar estoque disponível de um produto. Use quando o cliente perguntar sobre disponibilidade.',
       parameters: {
         type: 'object',
         properties: {
@@ -70,7 +70,7 @@ const TOOLS = [
         properties: {
           product_id: {
             type: 'string',
-            description: 'ID do produto cuja imagem serÃ¡ enviada'
+            description: 'ID do produto cuja imagem será enviada'
           }
         },
         required: ['product_id']
@@ -91,7 +91,7 @@ const TOOLS = [
           },
           quantity: {
             type: 'integer',
-            description: 'Quantidade desejada (padrÃ£o: 1)',
+            description: 'Quantidade desejada (padrão: 1)',
             default: 1,
             minimum: 1
           }
@@ -104,7 +104,7 @@ const TOOLS = [
     type: 'function',
     function: {
       name: 'view_cart',
-      description: 'Exibir conteÃºdo e total do carrinho do cliente',
+      description: 'Exibir conteúdo e total do carrinho do cliente',
       parameters: {
         type: 'object',
         properties: {}
@@ -132,13 +132,13 @@ const TOOLS = [
     type: 'function',
     function: {
       name: 'validate_coupon',
-      description: 'Validar um cupom de desconto fornecido pelo cliente. Verifica se o cupom existe e estÃ¡ ativo.',
+      description: 'Validar um cupom de desconto fornecido pelo cliente. Verifica se o cupom existe e está ativo.',
       parameters: {
         type: 'object',
         properties: {
           coupon_code: {
             type: 'string',
-            description: 'CÃ³digo do cupom de desconto (ex: "PRIMEIRACOMPRA", "DESCONTO10")'
+            description: 'Código do cupom de desconto (ex: "PRIMEIRACOMPRA", "DESCONTO10")'
           }
         },
         required: ['coupon_code']
@@ -149,16 +149,33 @@ const TOOLS = [
     type: 'function',
     function: {
       name: 'check_order_status',
-      description: 'Consultar status de um pedido pelo nÃºmero. Use quando cliente perguntar sobre entrega ou pedido.',
+      description: 'Consultar status de um pedido pelo número. Busca primeiro no Tiny ERP e depois no Wbuy. Use quando cliente perguntar sobre entrega ou pedido.',
       parameters: {
         type: 'object',
         properties: {
-          order_id: {
+          order_number: {
             type: 'string',
-            description: 'NÃºmero do pedido'
+            description: 'Número do pedido (ex: "12345", "GRS-001")'
           }
         },
-        required: ['order_id']
+        required: ['order_number']
+      }
+    }
+  },
+  {
+    type: 'function',
+    function: {
+      name: 'get_order_tracking',
+      description: 'Obter código de rastreamento e link dos Correios para um pedido. Use quando cliente perguntar "cadê meu pedido", "onde está minha encomenda", "rastreio".',
+      parameters: {
+        type: 'object',
+        properties: {
+          order_number: {
+            type: 'string',
+            description: 'Número do pedido para buscar rastreamento'
+          }
+        },
+        required: ['order_number']
       }
     }
   },
@@ -166,7 +183,7 @@ const TOOLS = [
     type: 'function',
     function: {
       name: 'generate_checkout_link',
-      description: 'Gerar link de checkout para finalizar a compra. Use quando cliente estÃ¡ pronto para comprar.',
+      description: 'Gerar link de checkout para finalizar a compra. Use quando cliente está pronto para comprar.',
       parameters: {
         type: 'object',
         properties: {}
@@ -202,13 +219,13 @@ const TOOLS = [
     type: 'function',
     function: {
       name: 'get_recommendations',
-      description: 'Obter recomendaÃ§Ãµes personalizadas baseado no perfil do cliente',
+      description: 'Obter recomendações personalizadas baseado no perfil do cliente ou restrição alimentar (ex: "sem glúten", "vegano", "diabético", "intolerante a lactose")',
       parameters: {
         type: 'object',
         properties: {
           customer_profile: {
             type: 'string',
-            description: 'Perfil/necessidade do cliente (ex: "emagrecimento", "imunidade", "energia", "beleza", "digestÃ£o")'
+            description: 'Perfil/necessidade do cliente (ex: "emagrecimento", "imunidade", "sem glúten", "vegano", "diabético", "digestão")'
           }
         },
         required: ['customer_profile']
@@ -219,7 +236,7 @@ const TOOLS = [
     type: 'function',
     function: {
       name: 'get_categories',
-      description: 'Listar todas as categorias de produtos disponÃ­veis na loja',
+      description: 'Listar todas as categorias de produtos disponíveis na loja',
       parameters: {
         type: 'object',
         properties: {}
@@ -229,18 +246,62 @@ const TOOLS = [
   {
     type: 'function',
     function: {
+      name: 'get_store_info',
+      description: 'Obter informações da loja física: endereço, horário de funcionamento, telefone e link do Google Maps. Use quando cliente perguntar sobre loja, endereço, como chegar, horário.',
+      parameters: {
+        type: 'object',
+        properties: {}
+      }
+    }
+  },
+  {
+    type: 'function',
+    function: {
+      name: 'check_business_hours',
+      description: 'Verificar se estamos em horário de atendimento humano (seg-sex 09:00-16:00). Use antes de transferir para humano.',
+      parameters: {
+        type: 'object',
+        properties: {}
+      }
+    }
+  },
+  {
+    type: 'function',
+    function: {
+      name: 'classify_customer_issue',
+      description: 'Classificar o tipo de problema do cliente para direcionar melhor o atendimento. Categorias: rastreamento, produto errado/danificado, troca/devolução, nota fiscal, pagamento, geral.',
+      parameters: {
+        type: 'object',
+        properties: {
+          description: {
+            type: 'string',
+            description: 'Descrição do problema do cliente em texto livre'
+          }
+        },
+        required: ['description']
+      }
+    }
+  },
+  {
+    type: 'function',
+    function: {
       name: 'transfer_to_human',
-      description: 'Transferir atendimento para um humano da equipe. Use quando: o cliente pedir explicitamente para falar com uma pessoa/atendente, quando o problema for complexo demais para resolver, quando o cliente estiver insatisfeito ou reclamando, ou quando precisar de suporte tecnico humano.',
+      description: 'Transferir atendimento para um humano da equipe. Use quando: o cliente pedir explicitamente para falar com uma pessoa/atendente, quando o problema for complexo demais para resolver, quando o cliente estiver insatisfeito ou reclamando, ou quando precisar de suporte humano. SEMPRE verifique horário de atendimento antes.',
       parameters: {
         type: 'object',
         properties: {
           reason: {
             type: 'string',
-            description: 'Motivo da transferencia (ex: "cliente quer falar com pessoa", "reclamacao", "problema tecnico")'
+            description: 'Motivo da transferencia (ex: "cliente quer falar com pessoa", "reclamacao", "produto danificado", "troca/devolucao")'
           },
           summary: {
             type: 'string',
             description: 'Resumo breve da conversa ate o momento para o atendente humano entender o contexto'
+          },
+          issue_type: {
+            type: 'string',
+            description: 'Tipo do problema: tracking, wrong_or_damaged, return_exchange, invoice, payment, general',
+            enum: ['tracking', 'wrong_or_damaged', 'return_exchange', 'invoice', 'payment', 'general']
           }
         },
         required: ['reason', 'summary']
@@ -263,7 +324,7 @@ function getToolDefinition(name) {
 function validateFunctionCall(functionName, parameters) {
   const tool = TOOLS.find(t => t.function.name === functionName);
   if (!tool) {
-    return { valid: false, error: `FunÃ§Ã£o ${functionName} nÃ£o existe` };
+    return { valid: false, error: `Função ${functionName} não existe` };
   }
 
   const schema = tool.function.parameters;
@@ -271,7 +332,7 @@ function validateFunctionCall(functionName, parameters) {
 
   for (const field of required) {
     if (!(field in parameters)) {
-      return { valid: false, error: `ParÃ¢metro obrigatÃ³rio faltando: ${field}` };
+      return { valid: false, error: `Parâmetro obrigatório faltando: ${field}` };
     }
   }
 
