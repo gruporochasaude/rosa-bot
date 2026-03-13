@@ -18,7 +18,7 @@ const {
   filterByDietaryNeeds,
   getAvailableDietaryFilters
 } = require('./products');
-const { validateCoupon, getOrder, getOrderStatus: getWbuyOrderStatus } = require('./wbuy-api');
+const { validateCoupon, getOrder, getOrderStatus: getWbuyOrderStatus, findOrderByNumber: findWbuyOrderByNumber } = require('./wbuy-api');
 const {
   getOrderByNumber,
   getOrderTracking,
@@ -392,67 +392,93 @@ async function processMessage(userId, userMessage) {
               const orderNumber = functionArgs.order_number || functionArgs.order_id;
               console.log(`[Agent] Checking order status for: ${orderNumber}`);
 
-              // Try Tiny ERP first
               let orderFound = false;
-              try {
-                const tinyOrder = await getOrderByNumber(orderNumber);
-                if (tinyOrder) {
-                  const formatted = formatOrderForCustomer(tinyOrder);
-                  functionResult = `📦 *Pedido #${formatted.numero}*\nStatus: ${formatted.situacao}\nData: ${formatted.dataPedido}\nTotal: R$ ${formatted.totalPedido}`;
 
-                  if (formatted.items && formatted.items.length > 0) {
-                    functionResult += `\nItens (${formatted.items.length}):`;
-                    formatted.items.forEach(item => {
-                      functionResult += `\n  ${item.descricao} (${item.quantidade}x)`;
-                    });
-                  }
-
-                  if (formatted.codigoRastreamento) {
-                    functionResult += `\n\n📬 Rastreio: ${formatted.codigoRastreamento}`;
-                    functionResult += `\nAcompanhe: https://www.linkcorreios.com.br/?id=${formatted.codigoRastreamento}`;
-                  }
-
-                  orderFound = true;
-                  console.log(`[Agent] Order found in Tiny ERP: ${orderNumber}`);
-                }
-              } catch (tinyError) {
-                console.log(`[Agent] Tiny ERP lookup failed for ${orderNumber}: ${tinyError.message}`);
-              }
-
-              // Fallback to Wbuy if not found in Tiny
+              // Strategy 1: Try Wbuy FIRST (orders originate here)
               if (!orderFound) {
                 try {
-                  const wbuyOrder = await getWbuyOrderStatus(orderNumber);
+                  // First try the smart search by number
+                  const wbuyOrder = await findWbuyOrderByNumber(orderNumber);
                   if (wbuyOrder) {
-                    let status = wbuyOrder.status;
-                    if (typeof status === 'object' && status !== null) {
-                      status = status.nome || status.descricao || JSON.stringify(status);
+                    // Extract status
+                    const rawStatus = wbuyOrder.situacao || wbuyOrder.status;
+                    let status;
+                    if (typeof rawStatus === 'object' && rawStatus !== null) {
+                      status = rawStatus.nome || rawStatus.descricao || JSON.stringify(rawStatus);
+                    } else {
+                      status = rawStatus || 'Desconhecido';
                     }
-                    status = status || 'Desconhecido';
 
-                    functionResult = `📦 Pedido #${orderNumber}\nStatus: ${status}`;
-                    if (wbuyOrder.date) functionResult += `\nData: ${wbuyOrder.date}`;
-                    if (wbuyOrder.total) functionResult += `\nTotal: R$ ${wbuyOrder.total}`;
-                    if (wbuyOrder.payment) functionResult += `\nPagamento: ${wbuyOrder.payment}`;
-                    if (wbuyOrder.itemCount > 0) {
-                      functionResult += `\nItens (${wbuyOrder.itemCount}):`;
-                      wbuyOrder.items.forEach(item => {
+                    // Extract payment
+                    const rawPayment = wbuyOrder.pagamento || wbuyOrder.forma_pagamento || '';
+                    const payment = typeof rawPayment === 'object' && rawPayment !== null
+                      ? (rawPayment.nome || rawPayment.descricao || '')
+                      : rawPayment;
+
+                    const displayNumber = wbuyOrder.numero || wbuyOrder.pedido || wbuyOrder.id || orderNumber;
+                    functionResult = `📦 *Pedido #${displayNumber}*\nStatus: ${status}`;
+
+                    const orderDate = wbuyOrder.data || wbuyOrder.cadastro || '';
+                    if (orderDate) functionResult += `\nData: ${orderDate}`;
+
+                    const total = wbuyOrder.total || wbuyOrder.valor_total || '';
+                    if (total) functionResult += `\nTotal: R$ ${total}`;
+                    if (payment) functionResult += `\nPagamento: ${payment}`;
+
+                    const items = wbuyOrder.itens || wbuyOrder.produtos || wbuyOrder.items || [];
+                    if (Array.isArray(items) && items.length > 0) {
+                      functionResult += `\nItens (${items.length}):`;
+                      items.forEach(item => {
+                        const name = item.produto || item.nome || item.name || 'Produto';
+                        const qty = item.quantidade || item.qty || 1;
+                        functionResult += `\n  - ${name} (${qty}x)`;
+                      });
+                    }
+
+                    const tracking = wbuyOrder.rastreio || wbuyOrder.tracking || '';
+                    if (tracking) {
+                      functionResult += `\n\n📬 Rastreio: ${tracking}`;
+                      functionResult += `\nAcompanhe: https://www.linkcorreios.com.br/?id=${tracking}`;
+                    }
+
+                    orderFound = true;
+                    console.log(`[Agent] Order found in Wbuy: ${orderNumber} -> ID ${wbuyOrder.id}`);
+                  }
+                } catch (wbuyError) {
+                  console.log(`[Agent] Wbuy lookup failed for ${orderNumber}: ${wbuyError.message}`);
+                }
+              }
+
+              // Strategy 2: Try Tiny ERP (for tracking/NF info)
+              if (!orderFound) {
+                try {
+                  const tinyOrder = await getOrderByNumber(orderNumber);
+                  if (tinyOrder) {
+                    const formatted = formatOrderForCustomer(tinyOrder);
+                    functionResult = `📦 *Pedido #${formatted.numero}*\nStatus: ${formatted.situacao}\nData: ${formatted.dataPedido}\nTotal: R$ ${formatted.totalPedido}`;
+
+                    if (formatted.items && formatted.items.length > 0) {
+                      functionResult += `\nItens (${formatted.itemCount}):`;
+                      formatted.items.forEach(item => {
                         functionResult += `\n  - ${item.name} (${item.quantity}x)`;
                       });
                     }
-                    if (wbuyOrder.tracking) {
-                      functionResult += `\nRastreio: ${wbuyOrder.tracking}`;
+
+                    if (formatted.codigoRastreamento) {
+                      functionResult += `\n\n📬 Rastreio: ${formatted.codigoRastreamento}`;
+                      functionResult += `\nAcompanhe: https://www.linkcorreios.com.br/?id=${formatted.codigoRastreamento}`;
                     }
+
                     orderFound = true;
-                    console.log(`[Agent] Order found in Wbuy: ${orderNumber}`);
+                    console.log(`[Agent] Order found in Tiny ERP: ${orderNumber}`);
                   }
-                } catch (wbuyError) {
-                  console.log(`[Agent] Wbuy lookup also failed for ${orderNumber}: ${wbuyError.message}`);
+                } catch (tinyError) {
+                  console.log(`[Agent] Tiny ERP lookup failed for ${orderNumber}: ${tinyError.message}`);
                 }
               }
 
               if (!orderFound) {
-                functionResult = `Pedido #${orderNumber} não encontrado. Verifique o número do pedido e tente novamente. Se preferir, posso transferir para um atendente.`;
+                functionResult = `Pedido #${orderNumber} não encontrado em nenhum dos nossos sistemas. Verifique o número do pedido e tente novamente. Se preferir, posso transferir para um atendente.`;
               }
             } catch (error) {
               console.error('[Agent] check_order_status error:', error.message);
